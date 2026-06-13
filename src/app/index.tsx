@@ -1,98 +1,102 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
+import { useFocusEffect } from 'expo-router';
+import { useSQLiteContext } from 'expo-sqlite';
+import { useCallback, useState } from 'react';
+import { FlatList, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { Spacing } from '@/constants/theme';
+import { CourseLabels, CrownColors } from '@/constants/taiko-colors';
+import { buildRecordQuery } from '@/db';
+import type { Class, Course, Crown } from '@/types';
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
-  return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
-  );
+/** buildRecordQuery が返す一覧行 */
+interface RecordListRow {
+  song_number: number;
+  song_title: string | null;
+  course: Course;
+  crown: Crown;
+  class: Class;
+  score_total: number;
+  star: number | null;
+  tier: string | null;
+  updated_at: number;
 }
 
-export default function HomeScreen() {
+export default function RecordsScreen() {
+  const db = useSQLiteContext();
+  const [rows, setRows] = useState<RecordListRow[]>([]);
+
+  const load = useCallback(async () => {
+    // 既定: 各譜面の最新記録を更新日時降順（フィルタ/ソート UI は次フェーズ）
+    const { sql, params } = buildRecordQuery({}, { key: 'updatedAt', desc: true });
+    const result = await db.getAllAsync<RecordListRow>(sql, ...params);
+    setRows(result);
+  }, [db]);
+
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load]),
+  );
+
   return (
     <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
-        </ThemedView>
-
-        <ThemedText type="code" style={styles.code}>
-          get started
+      <SafeAreaView edges={['top']} style={styles.safe}>
+        <ThemedText type="subtitle">記録</ThemedText>
+        <ThemedText type="small" themeColor="textSecondary">
+          {rows.length} 件（各譜面の最新記録）
         </ThemedText>
 
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
-
-        {Platform.OS === 'web' && <WebBadge />}
+        <FlatList
+          data={rows}
+          keyExtractor={(r) => `${r.song_number}-${r.course}`}
+          contentContainerStyle={styles.listContent}
+          ListEmptyComponent={
+            <ThemedText type="small" themeColor="textSecondary" style={styles.empty}>
+              まだ記録がありません。「取得」タブからデータを取得してください。
+            </ThemedText>
+          }
+          renderItem={({ item }) => <Row row={item} />}
+        />
       </SafeAreaView>
     </ThemedView>
   );
 }
 
+function Row({ row }: { row: RecordListRow }) {
+  return (
+    <ThemedView type="backgroundElement" style={styles.row}>
+      <View style={[styles.crownDot, { backgroundColor: CrownColors[row.crown] }]} />
+      <View style={styles.rowMain}>
+        <ThemedText type="smallBold" numberOfLines={1}>
+          {row.song_title ?? `#${row.song_number}`}
+        </ThemedText>
+        <ThemedText type="small" themeColor="textSecondary">
+          {CourseLabels[row.course]}
+          {row.star != null ? ` ★${row.star}` : ''}
+          {row.tier ? ` / ${row.tier}` : ''}
+        </ThemedText>
+      </View>
+      <ThemedText type="smallBold">{row.score_total.toLocaleString()}</ThemedText>
+    </ThemedView>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
+  container: { flex: 1 },
+  safe: { flex: 1, paddingHorizontal: Spacing.three, gap: Spacing.one },
+  listContent: { gap: Spacing.one, paddingVertical: Spacing.two, paddingBottom: Spacing.six },
+  empty: { textAlign: 'center', marginTop: Spacing.five },
+  row: {
     flexDirection: 'row',
-  },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
     alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
-  },
-  heroSection: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
-  },
-  title: {
-    textAlign: 'center',
-  },
-  code: {
-    textTransform: 'uppercase',
-  },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
+    gap: Spacing.two,
     paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
+    paddingVertical: Spacing.two,
+    borderRadius: Spacing.two,
   },
+  crownDot: { width: 12, height: 12, borderRadius: 6 },
+  rowMain: { flex: 1, gap: 2 },
 });
