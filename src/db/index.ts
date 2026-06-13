@@ -3,6 +3,7 @@ export {
   saveGenres,
   saveSongCatalog,
   saveStarCounts,
+  saveTierData,
   upsertGenre,
   upsertSong,
   upsertLevel,

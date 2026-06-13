@@ -6,14 +6,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
-import { runMigrations, saveStarCounts } from '@/db';
-import { fetchAllSongStars } from '@/scrape/taiko-wiki';
+import { runMigrations, saveStarCounts, saveTierData } from '@/db';
+import { fetchAllSongStars, fetchTierChart } from '@/scrape/taiko-wiki';
 
 export default function SettingsScreen() {
   const db = useSQLiteContext();
   const [message, setMessage] = useState<string | null>(null);
   const [starMessage, setStarMessage] = useState<string | null>(null);
   const [starLoading, setStarLoading] = useState(false);
+  const [tierMessage, setTierMessage] = useState<string | null>(null);
+  const [tierLoading, setTierLoading] = useState(false);
 
   const updateStars = async () => {
     setStarLoading(true);
@@ -35,6 +37,20 @@ export default function SettingsScreen() {
       setStarMessage(`エラー: ${String(e)}`);
     } finally {
       setStarLoading(false);
+    }
+  };
+
+  const updateTiers = async () => {
+    setTierLoading(true);
+    setTierMessage('取得中…');
+    try {
+      const tiers = await fetchTierChart(10);
+      const updated = await saveTierData(db, tiers);
+      setTierMessage(`完了 — ${tiers.length} 件取得 / ${updated} 件更新`);
+    } catch (e) {
+      setTierMessage(`エラー: ${String(e)}`);
+    } finally {
+      setTierLoading(false);
     }
   };
 
@@ -86,12 +102,74 @@ export default function SettingsScreen() {
           )}
         </ThemedView>
 
+        {/* tier 更新セクション */}
+        <ThemedView type="backgroundElement" style={styles.section}>
+          <ThemedText type="smallBold">全良★10 tier を更新</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            taiko.wiki の全良難易度表から ★10 の tier を取得して保存します。
+          </ThemedText>
+          <Pressable
+            style={[styles.btn, tierLoading && styles.btnDisabled]}
+            onPress={updateTiers}
+            disabled={tierLoading}>
+            <ThemedText type="smallBold">更新する</ThemedText>
+          </Pressable>
+          {tierMessage && (
+            <ThemedText type="small" themeColor="textSecondary">
+              {tierMessage}
+            </ThemedText>
+          )}
+        </ThemedView>
+
         {/* デバッグセクション */}
         <ThemedView type="backgroundElement" style={styles.section}>
           <ThemedText type="smallBold">デバッグ</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
-            ローカル DB を削除して初期状態に戻します。
-          </ThemedText>
+          <Pressable
+            style={styles.dangerBtn}
+            onPress={() =>
+              Alert.alert('tier データを削除', 'levels テーブルの tier / tier_rank を全て NULL にします。', [
+                { text: 'キャンセル', style: 'cancel' },
+                {
+                  text: '削除する',
+                  style: 'destructive',
+                  onPress: async () => {
+                    try {
+                      await db.runAsync('UPDATE levels SET tier = NULL, tier_rank = NULL');
+                      setMessage('tier データを削除しました。');
+                    } catch (e) {
+                      setMessage(`エラー: ${String(e)}`);
+                    }
+                  },
+                },
+              ])
+            }>
+            <ThemedText type="smallBold" style={styles.dangerText}>
+              tier データを削除
+            </ThemedText>
+          </Pressable>
+          <Pressable
+            style={styles.dangerBtn}
+            onPress={() =>
+              Alert.alert('★データを削除', 'levels テーブルの star を全て NULL にします。', [
+                { text: 'キャンセル', style: 'cancel' },
+                {
+                  text: '削除する',
+                  style: 'destructive',
+                  onPress: async () => {
+                    try {
+                      await db.runAsync('UPDATE levels SET star = NULL');
+                      setMessage('★データを削除しました。');
+                    } catch (e) {
+                      setMessage(`エラー: ${String(e)}`);
+                    }
+                  },
+                },
+              ])
+            }>
+            <ThemedText type="smallBold" style={styles.dangerText}>
+              ★データを削除
+            </ThemedText>
+          </Pressable>
           <Pressable style={styles.dangerBtn} onPress={resetDb}>
             <ThemedText type="smallBold" style={styles.dangerText}>
               DB を初期化（全データ削除）

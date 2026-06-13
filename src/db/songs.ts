@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import type { Course, Genre, Level, Song } from '@/types';
-import type { SongStar } from '@/scrape/taiko-wiki';
+import type { SongStar, SongTier } from '@/scrape/taiko-wiki';
 
 /**
  * 楽曲カタログ（Song / Genre / Level）の upsert。
@@ -129,6 +129,28 @@ export async function saveStarCounts(db: SQLiteDatabase, stars: SongStar[]): Pro
         );
         updated += result.changes;
       }
+    }
+  });
+  return updated;
+}
+
+/**
+ * taiko.wiki の全良難易度表データを levels テーブルの tier 列に書き込む。
+ * UPDATE のみなので FK 違反なし。カタログ未取得の曲はスキップされる。
+ * 戻り値は更新した行の総数。
+ */
+export async function saveTierData(db: SQLiteDatabase, tiers: SongTier[]): Promise<number> {
+  let updated = 0;
+  await db.withTransactionAsync(async () => {
+    for (const t of tiers) {
+      const result = await db.runAsync(
+        'UPDATE levels SET tier = ?, tier_rank = ? WHERE song_number = ? AND course = ?',
+        t.tier,
+        t.tierRank,
+        t.songNo,
+        t.course,
+      );
+      updated += result.changes;
     }
   });
   return updated;

@@ -168,7 +168,7 @@ export type RecordSortKey =
   | 'star'
   | 'tier'
   | 'updatedAt'
-  | 'ranking'
+  // | 'ranking'
   | 'achievement'
   | 'totalNotes';
 
@@ -204,9 +204,9 @@ const SORT_CLAUSE: Record<RecordSortKey, string> = {
   score: 'r.score_total',
   baseScore: 'base_score',
   star: 'lv.star',
-  tier: 'lv.tier',
+  tier: 'CASE WHEN lv.tier_rank IS NULL THEN 1 ELSE 0 END, lv.tier_rank',
   updatedAt: 'r.updated_at',
-  ranking: 'r.ranking',
+  // ranking: 'r.ranking',
   // 達成率降順、同率は総ノーツ数降順（難しい曲優先）
   achievement: 'achievement, total_notes',
   totalNotes: 'total_notes',
@@ -222,6 +222,11 @@ export function buildRecordQuery(
 ): { sql: string; params: (string | number)[] } {
   const where: string[] = [];
   const params: (string | number)[] = [];
+
+  // tier ソート時は ★10 譜面のみを対象とする
+  if (sort.key === 'tier') {
+    where.push('lv.star = 10');
+  }
 
   if (filter.titleQuery) {
     where.push('s.title LIKE ?');

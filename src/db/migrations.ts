@@ -4,7 +4,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
  * スキーマバージョン。DDL を追加するたびに +1 し、MIGRATIONS に差分を追記する。
  * SQLiteProvider の onInit から runMigrations を呼ぶ。
  */
-export const DATABASE_VERSION = 1;
+export const DATABASE_VERSION = 2;
 
 /** バージョン v に上げるための DDL。index = 適用後のバージョン番号。 */
 const MIGRATIONS: Record<number, string> = {
@@ -66,6 +66,12 @@ const MIGRATIONS: Record<number, string> = {
 
     CREATE INDEX IF NOT EXISTS idx_records_song_course
       ON records (song_number, course, updated_at DESC);
+  `,
+
+  2: /* sql */ `
+    -- taiko.wiki 全良難易度表の tier 順序を保持するカラムを追加。
+    -- NULL = 未取得、0 が最上位（取得ページ上の出現順）。
+    ALTER TABLE levels ADD COLUMN tier_rank INTEGER;
   `,
 };
 

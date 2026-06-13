@@ -64,9 +64,9 @@ const SORT_LABELS: Record<RecordSortKey, string> = {
   baseScore: '素点',
   achievement: '達成率',
   totalNotes: '総ノーツ',
-  ranking: 'ランク',
-  star: '難易度☆',
-  tier: 'Tier',
+  // ranking: '全国ランキング',
+  star: '☆の数',
+  tier: '全良難易度',
 };
 
 const SORT_KEYS: RecordSortKey[] = [
@@ -74,7 +74,7 @@ const SORT_KEYS: RecordSortKey[] = [
   'baseScore',
   'achievement',
   'totalNotes',
-  'ranking',
+  // 'ranking',
   'updatedAt',
   'star',
   'tier',
