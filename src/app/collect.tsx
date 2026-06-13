@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/DifficultyFilter';
 import { Spacing } from '@/constants/theme';
 import { saveGenres, saveRecords, saveSongCatalog } from '@/db';
+import { useTheme } from '@/hooks/use-theme';
 import { genreTitle } from '@/scrape/genres';
 import { INJECT_SCRIPT } from '@/scrape/inject-script';
 import type { ScrapeMessage, Target } from '@/scrape/messages';
@@ -242,12 +243,14 @@ function Button({
   disabled?: boolean;
   primary?: boolean;
 }) {
+  const theme = useTheme();
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
       style={[
         styles.button,
+        !primary && { backgroundColor: theme.backgroundSelected },
         primary && styles.buttonPrimary,
         disabled && styles.buttonDisabled,
       ]}>

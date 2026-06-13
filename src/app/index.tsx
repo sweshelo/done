@@ -207,7 +207,7 @@ export default function RecordsScreen() {
             </ThemedText>
           </View>
           <Pressable
-            style={[styles.filterToggle, hasFilter && styles.filterToggleActive]}
+            style={[styles.filterToggle, { backgroundColor: theme.backgroundSelected }, hasFilter && styles.filterToggleActive]}
             onPress={() => setShowFilter((v) => !v)}
           >
             <ThemedText
@@ -425,10 +425,15 @@ function Chip({
   color?: string;
   onPress: () => void;
 }) {
+  const theme = useTheme();
   return (
     <Pressable
       onPress={onPress}
-      style={[styles.chip, active && (color ? { backgroundColor: color } : styles.chipActive)]}
+      style={[
+        styles.chip,
+        { backgroundColor: theme.backgroundSelected },
+        active && (color ? { backgroundColor: color } : styles.chipActive),
+      ]}
     >
       <ThemedText type="small" style={active ? styles.chipActiveText : styles.chipInactiveText}>
         {label}
@@ -448,8 +453,12 @@ function SortChip({
   desc?: boolean;
   onPress: () => void;
 }) {
+  const theme = useTheme();
   return (
-    <Pressable onPress={onPress} style={[styles.chip, active && styles.chipActive]}>
+    <Pressable
+      onPress={onPress}
+      style={[styles.chip, { backgroundColor: theme.backgroundSelected }, active && styles.chipActive]}
+    >
       <ThemedText type="small" style={active ? styles.chipActiveText : styles.chipInactiveText}>
         {label}
         {active ? (desc ? ' ↓' : ' ↑') : ''}

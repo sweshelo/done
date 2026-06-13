@@ -7,10 +7,12 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { runMigrations, saveStarCounts, saveTierData } from '@/db';
+import { useTheme } from '@/hooks/use-theme';
 import { fetchAllSongStars, fetchTierChart } from '@/scrape/taiko-wiki';
 
 export default function SettingsScreen() {
   const db = useSQLiteContext();
+  const theme = useTheme();
   const [message, setMessage] = useState<string | null>(null);
   const [starMessage, setStarMessage] = useState<string | null>(null);
   const [starLoading, setStarLoading] = useState(false);
@@ -90,7 +92,7 @@ export default function SettingsScreen() {
             taiko.wiki から難易度★数を取得してローカル DB に保存します。
           </ThemedText>
           <Pressable
-            style={[styles.btn, starLoading && styles.btnDisabled]}
+            style={[styles.btn, { backgroundColor: theme.backgroundSelected }, starLoading && styles.btnDisabled]}
             onPress={updateStars}
             disabled={starLoading}>
             <ThemedText type="smallBold">更新する</ThemedText>
@@ -109,7 +111,7 @@ export default function SettingsScreen() {
             taiko.wiki の全良難易度表から ★10 の tier を取得して保存します。
           </ThemedText>
           <Pressable
-            style={[styles.btn, tierLoading && styles.btnDisabled]}
+            style={[styles.btn, { backgroundColor: theme.backgroundSelected }, tierLoading && styles.btnDisabled]}
             onPress={updateTiers}
             disabled={tierLoading}>
             <ThemedText type="smallBold">更新する</ThemedText>
