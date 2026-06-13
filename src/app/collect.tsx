@@ -1,24 +1,22 @@
 import { useSQLiteContext } from 'expo-sqlite';
-import { useCallback, useRef, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { BackHandler, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { WebView, type WebViewMessageEvent } from 'react-native-webview';
+import { WebView, type WebViewMessageEvent, type WebViewNavigation } from 'react-native-webview';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { saveGenres, saveRecords, saveSongCatalog } from '@/db';
+import { genreTitle } from '@/scrape/genres';
 import { INJECT_SCRIPT } from '@/scrape/inject-script';
 import type { ScrapeMessage, Target } from '@/scrape/messages';
 
-// 本家 PC 版を安定して得るためデスクトップ Chrome の UA を固定する（DESIGN.md §5.2）
-const PC_USER_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
-
+// UA は固定しない。強制デスクトップ UA は donderhiroba の PC ログインフローを誘発し、
+// モバイルでのカード選択完了が /login.php に誤誘導される原因になる（DESIGN.md §5.2）。
 const START_URL = 'https://donderhiroba.jp/index.php';
 
 interface DoneConfig {
-  mode: 'probe' | 'scrape';
   retryTargets?: Target[];
   concurrency?: number;
 }
@@ -40,21 +38,48 @@ export default function CollectScreen() {
   const [status, setStatus] = useState('読み込み中…');
   const [failed, setFailed] = useState<Target[]>([]);
 
+  // 取得中フラグ。state は再描画が非同期なので、BackHandler など即時参照用に ref も持つ。
+  const runningRef = useRef(false);
+  const setRunningState = useCallback((v: boolean) => {
+    runningRef.current = v;
+    setRunning(v);
+  }, []);
+
+  // 取得中は Android の物理戻るを消費し、WebView の戻り遷移で取得が止まるのを防ぐ。
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => runningRef.current);
+    return () => sub.remove();
+  }, []);
+
   const inject = useCallback((cfg: DoneConfig) => {
     webRef.current?.injectJavaScript(
       `window.__DONE_CONFIG__=${JSON.stringify(cfg)};\n${INJECT_SCRIPT}\ntrue;`,
     );
   }, []);
 
-  const onLoadEnd = useCallback(
-    (e: { nativeEvent: { url: string } }) => {
-      // donderhiroba 上にいるときだけログイン状態をプローブする
-      if (e.nativeEvent.url.includes('donderhiroba.jp') && !running) {
-        inject({ mode: 'probe' });
-      }
-    },
-    [inject, running],
-  );
+  // ログイン状態は「表示中 URL」で判定する。Web アクセス(probe)判定は無効 URL アクセスで
+  // donderhiroba 側の強制ログアウトを誘発したため撤去（ユーザー報告）。
+  //   - login.php  → 未ログイン
+  //   - index.php  → ログイン済み（カード選択を含むログイン完了後の着地ページ）
+  //   - それ以外/外部ドメイン(OAuth 等) → 直近の判定を維持
+  const onNavigationStateChange = useCallback((navState: WebViewNavigation) => {
+    if (runningRef.current) return; // 取得中はステータスを動かさない
+    const url = navState.url;
+    if (!url.includes('donderhiroba.jp')) return;
+    if (url.includes('login.php')) {
+      setLoggedIn(false);
+      setStatus('未ログイン — ログインしてください');
+    } else if (url.includes('index.php')) {
+      setLoggedIn(true);
+      setStatus('ログイン済み — 取得できます');
+    } else if (url.includes('score_list.php')) {
+      const qs = url.split('?')[1] ?? '';
+      const genre = new URLSearchParams(qs).get('genre') ?? '1';
+      setStatus(`「${genreTitle(Number(genre))}」を取得します`);
+    } else if (url.includes('score_detail.php')) {
+      setStatus('このスコアを取得します');
+    }
+  }, []);
 
   const onMessage = useCallback(
     async (e: WebViewMessageEvent) => {
@@ -66,11 +91,6 @@ export default function CollectScreen() {
       }
 
       switch (msg.type) {
-        case 'session':
-          setLoggedIn(msg.loggedIn);
-          setStatus(msg.loggedIn ? 'ログイン済み — 取得できます' : '未ログイン — ログインしてください');
-          break;
-
         case 'progress':
           setProgress({
             phase: msg.phase,
@@ -90,7 +110,7 @@ export default function CollectScreen() {
         case 'complete': {
           const inserted = await saveRecords(db, msg.records);
           setFailed(msg.failedTargets);
-          setRunning(false);
+          setRunningState(false);
           setProgress(null);
           setStatus(
             `完了 — ${msg.records.length} 件取得 / ${inserted} 件更新` +
@@ -100,27 +120,36 @@ export default function CollectScreen() {
         }
 
         case 'error':
-          setRunning(false);
+          setRunningState(false);
           setStatus(`エラー: ${msg.message}`);
           break;
       }
     },
-    [db],
+    [db, setRunningState],
   );
 
   const start = useCallback(() => {
-    setRunning(true);
+    setRunningState(true);
     setFailed([]);
     setProgress({ phase: 'catalog', message: '開始…', current: 0, total: 0 });
-    inject({ mode: 'scrape' });
-  }, [inject]);
+    inject({});
+  }, [inject, setRunningState]);
 
   const retry = useCallback(() => {
     if (!failed.length) return;
-    setRunning(true);
+    setRunningState(true);
     setProgress({ phase: 'detail', message: '再試行…', current: 0, total: failed.length });
-    inject({ mode: 'scrape', retryTargets: failed });
-  }, [failed, inject]);
+    inject({ retryTargets: failed });
+  }, [failed, inject, setRunningState]);
+
+  // 取得の破棄（中止）: 遷移ロックを解除し、WebView を reload して
+  // 実行中の inject ループと未完了 fetch を破棄する。
+  const cancel = useCallback(() => {
+    setRunningState(false);
+    setProgress(null);
+    setStatus('中止しました');
+    webRef.current?.reload();
+  }, [setRunningState]);
 
   const pct =
     progress && progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
@@ -142,7 +171,11 @@ export default function CollectScreen() {
         )}
 
         <View style={styles.buttonRow}>
-          <Button label="取得開始" disabled={!loggedIn || running} onPress={start} primary />
+          {running ? (
+            <Button label="中止" onPress={cancel} primary />
+          ) : (
+            <Button label="取得開始" disabled={!loggedIn} onPress={start} primary />
+          )}
           {failed.length > 0 && !running && (
             <Button label={`失敗 ${failed.length} 件を再試行`} onPress={retry} />
           )}
@@ -150,16 +183,28 @@ export default function CollectScreen() {
         </View>
       </SafeAreaView>
 
-      <WebView
-        ref={webRef}
-        source={{ uri: START_URL }}
-        userAgent={PC_USER_AGENT}
-        sharedCookiesEnabled
-        thirdPartyCookiesEnabled
-        onLoadEnd={onLoadEnd}
-        onMessage={onMessage}
-        style={styles.web}
-      />
+      <View style={styles.webWrap}>
+        <WebView
+          ref={webRef}
+          source={{ uri: START_URL }}
+          sharedCookiesEnabled
+          thirdPartyCookiesEnabled
+          allowsBackForwardNavigationGestures={false}
+          onNavigationStateChange={onNavigationStateChange}
+          onMessage={onMessage}
+          style={styles.web}
+        />
+
+        {/* 取得中はオーバーレイでタッチを遮断し、ユーザー操作によるページ遷移を防ぐ。
+            ナビゲーションポリシーに干渉しないためログイン POST を壊さない。 */}
+        {running && (
+          <View style={styles.lockOverlay}>
+            <ThemedText type="smallBold" style={styles.lockText}>
+              取得中はページ操作できません
+            </ThemedText>
+          </View>
+        )}
+      </View>
     </ThemedView>
   );
 }
@@ -216,5 +261,24 @@ const styles = StyleSheet.create({
   buttonPrimary: { backgroundColor: '#e94560' },
   buttonPrimaryText: { color: '#fff' },
   buttonDisabled: { opacity: 0.4 },
+  webWrap: { flex: 1 },
   web: { flex: 1 },
+  lockOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.15)',
+  },
+  lockText: {
+    color: '#fff',
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    borderRadius: Spacing.two,
+    overflow: 'hidden',
+  },
 });

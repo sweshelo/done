@@ -9,8 +9,8 @@ export const GENRE_COUNT = 8;
 
 const GENRE_TITLES: Record<number, string> = {
   1: 'ポップス',
-  2: 'キッズ',
-  3: 'アニメ',
+  2: 'アニメ',
+  3: 'キッズ',
   4: 'ボーカロイド',
   5: 'ゲームミュージック',
   6: 'ナムコオリジナル',

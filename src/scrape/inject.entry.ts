@@ -3,20 +3,20 @@
  * (scripts/build-inject.ts)。donderhiroba のページ上 (ログイン済みセッション) で実行され、
  * window.ReactNativeWebView.postMessage 経由で RN にメッセージを送る。
  *
- * 動作モードは注入直前に RN が代入する window.__DONE_CONFIG__ で切り替える:
- *   - mode 'probe'  : ログイン状態のみ判定して 'session' を返す
- *   - mode 'scrape' : Phase1(カタログ) → Phase2(詳細) を実行
+ * 表示中の URL からコンテキストを判定し、取得範囲を切り替える:
+ *   - /score_list.php?genre=X  → そのジャンルのみ (genre モード)
+ *   - /score_detail.php?song_no=X&level=Y → その1曲1難易度のみ (detail モード)
+ *   - それ以外                 → 全ジャンル全スコア (full モード)
+ * retryTargets が指定された場合は常に detail フローで上書きされる。
  */
 import { withConcurrency } from './concurrency';
-import { allGenres, genreId, GENRE_COUNT } from './genres';
+import { allGenres, genreId, genreTitle, GENRE_COUNT } from './genres';
 import type { CatalogSongPayload, ScrapeMessage, Target } from './messages';
 import { parseDifficulty, toRecord } from './parsers';
 import { fetchDetailRecord, fetchGenreSongs } from './scraper';
-import { probeLoginState } from './session';
 import type { Record as DoneRecord } from '../types';
 
 interface DoneConfig {
-  mode: 'probe' | 'scrape';
   retryTargets?: Target[];
   concurrency?: number;
 }
@@ -29,15 +29,59 @@ declare const window: Window & {
 const post = (msg: ScrapeMessage) => window.ReactNativeWebView?.postMessage(JSON.stringify(msg));
 
 void (async () => {
-  const cfg: DoneConfig = window.__DONE_CONFIG__ ?? { mode: 'probe' };
+  const cfg: DoneConfig = window.__DONE_CONFIG__ ?? {};
 
   try {
-    if (cfg.mode === 'probe') {
-      const state = await probeLoginState();
-      post({ type: 'session', loggedIn: state.loggedIn, reason: state.reason });
+    // --- コンテキスト判定 ---
+    type Mode = 'full' | 'genre' | 'detail';
+    let mode: Mode = 'full';
+    let contextGenre = 1;
+    let contextSongNo: string | undefined;
+    let contextLevel: string | undefined;
+
+    if (!cfg.retryTargets?.length) {
+      const urlObj = new URL(window.location.href);
+      const pathname = urlObj.pathname;
+      const params = urlObj.searchParams;
+
+      if (pathname.includes('score_list.php')) {
+        mode = 'genre';
+        contextGenre = Number(params.get('genre') ?? '1') || 1;
+      } else if (pathname.includes('score_detail.php')) {
+        mode = 'detail';
+        contextSongNo = params.get('song_no') ?? undefined;
+        contextLevel = params.get('level') ?? undefined;
+        contextGenre = Number(params.get('genre') ?? '1') || 1;
+      }
+    }
+
+    // --- Detail モード: 表示中の1曲1難易度のみ取得 ---
+    if (mode === 'detail') {
+      if (!contextSongNo || !contextLevel) {
+        throw new Error('score_detail.php の URL に song_no/level が見当たりません');
+      }
+      const songTitle = document.querySelector('.songName')?.textContent?.trim();
+
+      // FK 制約のため songs/genres を先に upsert させる最小限のカタログを送信
+      post({
+        type: 'catalog',
+        genres: [{ id: genreId(contextGenre), title: genreTitle(contextGenre) }],
+        songs: [{
+          number: Number(contextSongNo),
+          title: songTitle,
+          genreIds: [genreId(contextGenre)],
+          courses: [parseDifficulty(contextLevel)],
+        }],
+      });
+
+      post({ type: 'progress', phase: 'detail', message: songTitle ?? contextSongNo, current: 0, total: 1 });
+      const raw = await fetchDetailRecord(contextSongNo, contextLevel);
+      const rec = toRecord(raw);
+      post({ type: 'complete', records: [rec], failedTargets: [] });
       return;
     }
 
+    // --- Phase 1 / リトライ ---
     let targets: Target[];
 
     if (cfg.retryTargets && cfg.retryTargets.length > 0) {
@@ -51,18 +95,21 @@ void (async () => {
         total: targets.length,
       });
     } else {
-      // Phase 1: 全ジャンルの楽曲リストを取得
+      // Phase 1: genre モードは1ジャンルのみ、full モードは全ジャンル
+      const genresToFetch =
+        mode === 'genre'
+          ? [contextGenre]
+          : Array.from({ length: GENRE_COUNT }, (_, i) => i + 1);
+
       post({
         type: 'progress',
         phase: 'catalog',
         message: '楽曲リストを取得中…',
         current: 0,
-        total: GENRE_COUNT,
+        total: genresToFetch.length,
       });
 
-      const songsByGenre = await Promise.all(
-        Array.from({ length: GENRE_COUNT }, (_, i) => fetchGenreSongs(i + 1)),
-      );
+      const songsByGenre = await Promise.all(genresToFetch.map((g) => fetchGenreSongs(g)));
 
       // 同一曲が複数ジャンルに属す場合があるため曲IDで集約しジャンル/難易度をマージ
       const map = new Map<
@@ -98,7 +145,13 @@ void (async () => {
         genreIds: s.genres.map(genreId),
         courses: s.results.map((r) => parseDifficulty(r.difficulty)),
       }));
-      post({ type: 'catalog', genres: allGenres(), songs: catalogSongs });
+
+      const genresForCatalog =
+        mode === 'genre'
+          ? [{ id: genreId(contextGenre), title: genreTitle(contextGenre) }]
+          : allGenres();
+
+      post({ type: 'catalog', genres: genresForCatalog, songs: catalogSongs });
 
       // Phase 2 用 targets（プレイ済みのみ）
       targets = [...map.values()].flatMap((s) =>

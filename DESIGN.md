@@ -218,20 +218,20 @@ CREATE INDEX idx_records_song_course ON records(song_number, course, updated_at 
 - 楽曲リスト: `.contentBox` 単位 / 曲名 `.songName` / 難易度ボタン `.buttonList > li > a`（href の `song_no=` `level=`、未プレイ判定は img src に `_none_`）
 - 詳細: `.crown`(img src `crown_large_N_`) / `.best_score_icon`(img src `best_score_rank_N_`) / `.high_score` `.good_cnt` `.ok_cnt` `.ng_cnt` `.combo_cnt` `.pound_cnt` / オプション `.optionImage > img` / 履歴 `.stage_cnt` `.clear_cnt` `.full_combo_cnt` `.dondaful_combo_cnt` / `.ranking`
 
-### 5.2 ログイン状態判定の再設計（SPEC 指摘の不具合）
+### 5.2 ログイン状態判定（表示中 URL ベース）
 
-**問題**: 「現在 URL が `donderhiroba.jp/index.php` か」で判定していたが、アプリ再起動→自動ログインのケースで誤判定する。実地調査でも、`index.php` を素の HTTP で叩くと **User-Agent 次第でブラウザ警告ページが返る**ことを確認しており、URL/UA 依存の判定は脆い。
+**経緯**: 当初 SPEC 指摘（URL 判定が自動ログインで誤判定）を受け、注入 JS から `fetch('/score_list.php?genre=1')` の応答 DOM を検査する **probe(Web アクセス)方式** を採用した。しかし実機検証で、**この probe による無効/不適切な URL アクセスが donderhiroba 側の強制ログアウトを誘発する**ことが判明（カード選択直後に probe が走り `/login.php` に飛ばされる）。よって probe 方式は撤去し、**表示中 URL ベースの判定**に戻した（`src/scrape/session.ts` は削除、inject の probe モード・`session` メッセージも撤去）。
 
-**再設計方針 — URL ではなく「認証済みエンドポイントの応答内容」で判定する:**
+**判定方式（`src/app/collect.tsx` の `onNavigationStateChange`）**:
+- `login.php` を含む URL → 未ログイン。
+- `index.php` を含む URL → ログイン済み（カード選択を含むログイン完了後の着地ページ）。
+- それ以外／外部ドメイン（OAuth の x.com 等）→ 直近の判定を維持（状態を動かさない）。
+- 取得中（`running`）はステータスを動かさない。
+- スクレイプ開始ボタンは `loggedIn === true` のときのみ活性。
 
-1. WebView ロード後、`onNavigationStateChange` は**遷移トリガ**としてのみ使い、判定には使わない。
-2. 判定は注入 JS から **`fetch('/score_list.php?genre=1', {redirect:'manual'|'follow'})`** を1回投げ、応答 DOM を検査する `probeLoginState()` を新設（`lib/scrape/session.ts`）。
-   - ログイン済みシグナル: `.contentBox` または `.songName` が**1つ以上存在**する（＝スコアデータが返っている）。
-   - 未ログインシグナル: ログインフォーム / 「ログイン」ボタン / `index.php` への redirect / 警告ページ要素。
-3. 結果を `postMessage({type:'session', loggedIn:boolean})` で RN に返し、ボタン活性/非活性を制御。スクレイプ開始ボタンは `loggedIn === true` のときのみ有効化。
-4. **UA 固定**: 本家 PC 版を安定して得るため `WebView` の `userAgent` をデスクトップ Chrome 相当に固定（SP 版へのフォールバックや警告ページを避ける）。SP 版 DOM を使う設計に切り替える場合はセレクタ差分の追加調査が必要（§8-Q1）。
+> probe を使わないため、判定が donderhiroba にスコア取得以外の余計なリクエストを投げず、強制ログアウトを誘発しない。自動ログインの非同期リダイレクトは最終的に `index.php`／`login.php` のどちらかへ収束するため、表示中 URL で判定できる。
 
-> ポイントは「ログインしているか」を**画面URLの形**ではなく**保護リソースが取れるか**で定義し直すこと。自動ログインの非同期なリダイレクトに左右されない。
+**UA は固定しない**: 端末既定のモバイル WebView UA を使う（`userAgent` 未設定）。`score_list.php`/`score_detail.php` はモバイル文脈でも機能する（プロトタイプのモバイル注入が同エンドポイントを UA 固定なしで利用）。万一モバイル版で DOM が異なれば SP 用セレクタ対応を追加する。
 
 ### 5.3 未プレイ曲の Song/Genre 登録（SPEC 要件）
 
@@ -242,6 +242,15 @@ Phase 1（`fetchGenreSongs`）で得た**全曲**（played に関わらず）を
 ### 5.4 リトライ
 
 プロトタイプの `__retryTargets` 機構を踏襲。`complete.failedTargets` を RN 側に保持し、「失敗分を再試行」で Phase 1 をスキップして再注入。
+
+### 5.5 取得中のページ遷移ロックと中止（破棄）
+
+取得は「表示中ページの JS コンテキストで `fetch` ループを回す」方式のため、**取得中にページ遷移／リロードするとコンテキストが破棄され取得が止まる**。
+
+- **バックグラウンド継続は不可（結論）**: iOS は WKWebView の JS/XHR をバックグラウンド移行直後に停止する。`expo-background-task` は WebView を扱えず短時間の周期実行のみで、連続スクレイプに使えない。よって OS サスペンド中の取得継続は採用しない。
+- **取得中の遷移ロック（オーバーレイ方式）**: `running` 中のみ WebView の上に**透明なタッチ遮断 View**（`position:absolute` で全面）を重ね、ユーザー操作によるページ遷移を防ぐ。`onShouldStartLoadWithRequest` は**使わない**（iOS では POST ボディを落として POST→GET 化し、カード選択ログインを壊す＝`/login.php` バグを誘発する。Android では POST で発火しない）。スクレイプの `fetch()` とログイン POST（`running=false` 時はオーバーレイ無し）は阻害されない。Android 物理戻るは `running` 中のみ `BackHandler` で消費。iOS は `allowsBackForwardNavigationGestures={false}` を付与。
+- **中止＝破棄**: `running` 中は「取得開始」を「中止」ボタンに差し替え。押下で遷移ロックを解除し `webRef.reload()` で WebView を再読込 → 実行中の inject ループと未完了 fetch を破棄する。`complete` 受信前の Phase2 結果は保存されない（＝意図どおり破棄）。`reload` 後は `onNavigationStateChange` が表示中 URL から `loggedIn` を再判定する。
+- 実装は `src/app/collect.tsx` に集約（inject/DB/依存追加は不要）。
 
 ---
 

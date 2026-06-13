@@ -18,7 +18,6 @@ export interface CatalogSongPayload {
 }
 
 export type ScrapeMessage =
-  | { type: 'session'; loggedIn: boolean; reason: string }
   | { type: 'progress'; phase: 'catalog' | 'detail'; message: string; current: number; total: number }
   | { type: 'catalog'; genres: { id: string; title: string }[]; songs: CatalogSongPayload[] }
   | { type: 'complete'; records: DoneRecord[]; failedTargets: Target[] }
