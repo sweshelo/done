@@ -1,6 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import type { Course, Genre, Level, Song } from '@/types';
+import type { SongStar } from '@/scrape/taiko-wiki';
 
 /**
  * 楽曲カタログ（Song / Genre / Level）の upsert。
@@ -98,4 +99,37 @@ export async function saveGenres(db: SQLiteDatabase, genres: Pick<Genre, 'id' | 
   await db.withTransactionAsync(async () => {
     for (const g of genres) await upsertGenre(db, g);
   });
+}
+
+const WIKI_COURSE_MAP: Record<string, Course> = {
+  easy: 'EASY',
+  normal: 'NORMAL',
+  hard: 'DIFFICULT',
+  oni: 'ONI',
+  ura: 'EXTRA',
+};
+
+/**
+ * taiko.wiki の★数データを levels テーブルに書き込む。
+ * UPDATE のみ（INSERT なし）なので FK 違反が起きず、カタログ未取得の曲はスキップされる。
+ * 戻り値は更新した行の総数。
+ */
+export async function saveStarCounts(db: SQLiteDatabase, stars: SongStar[]): Promise<number> {
+  let updated = 0;
+  await db.withTransactionAsync(async () => {
+    for (const star of stars) {
+      for (const [wikiKey, course] of Object.entries(WIKI_COURSE_MAP)) {
+        const level = star[wikiKey as keyof SongStar] as number | undefined;
+        if (level == null) continue;
+        const result = await db.runAsync(
+          'UPDATE levels SET star = ? WHERE song_number = ? AND course = ?',
+          level,
+          star.songNo,
+          course,
+        );
+        updated += result.changes;
+      }
+    }
+  });
+  return updated;
 }

@@ -1,0 +1,84 @@
+/**
+ * taiko.wiki の楽曲ページから難易度★数をスクレイプする。
+ *
+ * エンドポイント: https://taiko.wiki/song/{song_no}
+ * 対象要素: .difficulty-container 内の span[data-ismobile="false"]
+ * 表示順: かんたん / ふつう / むずかしい / おに / 裏
+ *
+ * 認証不要の公開サイトなので React Native の fetch() を直接使用する（WebView 不要）。
+ */
+import { parse } from 'node-html-parser';
+
+import { withConcurrency } from './concurrency';
+
+/** taiko.wiki の1曲分の★データ。songNo は donderhiroba の song_no と同じ整数。 */
+export interface SongStar {
+  songNo: number;
+  easy?: number;
+  normal?: number;
+  hard?: number;
+  oni?: number;
+  ura?: number;
+}
+
+const DIFFICULTY_KEYS: Array<keyof Omit<SongStar, 'songNo'>> = [
+  'easy',
+  'normal',
+  'hard',
+  'oni',
+  'ura',
+];
+
+/**
+ * 1曲の★数を取得する。
+ * ページが存在しないか難易度情報が取れない場合は null を返す。
+ */
+export async function fetchSongStar(songNo: number): Promise<SongStar | null> {
+  try {
+    const resp = await fetch(`https://taiko.wiki/song/${songNo}`);
+    if (!resp.ok) return null;
+    const html = await resp.text();
+
+    // HTML を DOM として解釈し、.difficulty 内の desktop 表示 span の innerText を取得してから
+    // ★数を正規表現で抽出する（生テキストへの直接 regex より確実）
+    const dom = parse(html);
+    const spans = dom.querySelectorAll('.difficulty > span');
+    if (spans.length === 0) return null;
+
+    const star: SongStar = { songNo };
+    spans.forEach((span, i) => {
+      const key = DIFFICULTY_KEYS[i];
+      if (!key) return;
+      const m = span.innerText.match(/★\s*(\d+)/);
+      if (m) star[key] = parseInt(m[1], 10);
+    });
+    return star;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 指定した楽曲番号リストの★数を並列取得する。
+ * @param songNumbers donderhiroba の song_no 一覧（DB の songs テーブルから取得する想定）
+ * @param concurrency 並列数（デフォルト 5）
+ * @param onProgress 進捗コールバック (取得済み件数, 総件数)
+ */
+export async function fetchAllSongStars(
+  songNumbers: number[],
+  concurrency = 5,
+  onProgress?: (done: number, total: number) => void,
+): Promise<SongStar[]> {
+  let done = 0;
+  const all = await withConcurrency(
+    songNumbers.map(
+      (no) => async () => {
+        const star = await fetchSongStar(no);
+        onProgress?.(++done, songNumbers.length);
+        return star;
+      },
+    ),
+    concurrency,
+  );
+  return all.filter((s): s is SongStar => s !== null);
+}

@@ -70,12 +70,12 @@ const SORT_LABELS: Record<RecordSortKey, string> = {
 };
 
 const SORT_KEYS: RecordSortKey[] = [
-  'updatedAt',
   'score',
   'baseScore',
   'achievement',
   'totalNotes',
   'ranking',
+  'updatedAt',
   'star',
   'tier',
 ];
@@ -121,7 +121,7 @@ export default function RecordsScreen() {
   const [selectedClasses, setSelectedClasses] = useState<Class[]>([]);
 
   // ---- ソート状態 ----
-  const [sortKey, setSortKey] = useState<RecordSortKey>('updatedAt');
+  const [sortKey, setSortKey] = useState<RecordSortKey>('score');
   const [sortDesc, setSortDesc] = useState(true);
 
   const load = useCallback(async () => {

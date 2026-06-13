@@ -2,6 +2,7 @@ export { DATABASE_NAME, DATABASE_VERSION, runMigrations } from './migrations';
 export {
   saveGenres,
   saveSongCatalog,
+  saveStarCounts,
   upsertGenre,
   upsertSong,
   upsertLevel,

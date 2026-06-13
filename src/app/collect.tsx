@@ -7,10 +7,9 @@ import { WebView, type WebViewMessageEvent, type WebViewNavigation } from 'react
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import {
-  DIFFICULTY_KEYS,
   DifficultyFilter,
   toCourses,
-  type DifficultyKey,
+  type DifficultyKey
 } from '@/components/ui/DifficultyFilter';
 import { Spacing } from '@/constants/theme';
 import { saveGenres, saveRecords, saveSongCatalog } from '@/db';
@@ -47,7 +46,7 @@ export default function CollectScreen() {
   const [status, setStatus] = useState('読み込み中…');
   const [failed, setFailed] = useState<Target[]>([]);
   const [selectedDifficulties, setSelectedDifficulties] =
-    useState<DifficultyKey[]>(DIFFICULTY_KEYS);
+    useState<DifficultyKey[]>(['ONI']);
 
   // 取得中フラグ。state は再描画が非同期なので、BackHandler など即時参照用に ref も持つ。
   const runningRef = useRef(false);
@@ -91,7 +90,7 @@ export default function CollectScreen() {
       const genre = new URLSearchParams(qs).get('genre') ?? '1';
       setStatus(`「${genreTitle(Number(genre))}」のスコアのみを取得します`);
     } else if (url.includes('score_detail.php')) {
-      setStatus('このスコアを取得します');
+      setStatus('表示中楽曲のスコアを取得します');
     }
   }, []);
 

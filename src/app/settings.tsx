@@ -6,11 +6,37 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
-import { runMigrations } from '@/db';
+import { runMigrations, saveStarCounts } from '@/db';
+import { fetchAllSongStars } from '@/scrape/taiko-wiki';
 
 export default function SettingsScreen() {
   const db = useSQLiteContext();
   const [message, setMessage] = useState<string | null>(null);
+  const [starMessage, setStarMessage] = useState<string | null>(null);
+  const [starLoading, setStarLoading] = useState(false);
+
+  const updateStars = async () => {
+    setStarLoading(true);
+    setStarMessage('楽曲リストを確認中…');
+    try {
+      const rows = await db.getAllAsync<{ number: number }>('SELECT number FROM songs');
+      if (rows.length === 0) {
+        setStarMessage('楽曲データが未取得です。先にデータ取得を実行してください。');
+        return;
+      }
+      const songNumbers = rows.map((r) => r.number);
+      setStarMessage(`0 / ${songNumbers.length} 取得中…`);
+      const stars = await fetchAllSongStars(songNumbers, 5, (done, total) => {
+        setStarMessage(`${done} / ${total} 取得中…`);
+      });
+      const updated = await saveStarCounts(db, stars);
+      setStarMessage(`完了 — ${stars.length} 曲取得 / ${updated} 件更新`);
+    } catch (e) {
+      setStarMessage(`エラー: ${String(e)}`);
+    } finally {
+      setStarLoading(false);
+    }
+  };
 
   const resetDb = () => {
     Alert.alert(
@@ -40,6 +66,25 @@ export default function SettingsScreen() {
     <ThemedView style={styles.container}>
       <SafeAreaView edges={['top']} style={styles.safe}>
         <ThemedText type="subtitle">設定</ThemedText>
+
+        {/* ★数更新セクション */}
+        <ThemedView type="backgroundElement" style={styles.section}>
+          <ThemedText type="smallBold">楽曲★数を更新</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            taiko.wiki から難易度★数を取得してローカル DB に保存します。
+          </ThemedText>
+          <Pressable
+            style={[styles.btn, starLoading && styles.btnDisabled]}
+            onPress={updateStars}
+            disabled={starLoading}>
+            <ThemedText type="smallBold">更新する</ThemedText>
+          </Pressable>
+          {starMessage && (
+            <ThemedText type="small" themeColor="textSecondary">
+              {starMessage}
+            </ThemedText>
+          )}
+        </ThemedView>
 
         {/* デバッグセクション */}
         <ThemedView type="backgroundElement" style={styles.section}>
@@ -71,6 +116,14 @@ const styles = StyleSheet.create({
     padding: Spacing.three,
     gap: Spacing.two,
   },
+  btn: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    borderRadius: Spacing.two,
+    backgroundColor: '#F0F0F3',
+  },
+  btnDisabled: { opacity: 0.4 },
   dangerBtn: {
     alignSelf: 'flex-start',
     paddingHorizontal: Spacing.three,
