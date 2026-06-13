@@ -14,8 +14,8 @@ const GENRE_TITLES: Record<number, string> = {
   4: 'ボーカロイド',
   5: 'ゲームミュージック',
   6: 'ナムコオリジナル',
-  7: 'クラシック',
-  8: 'バラエティ',
+  7: 'バラエティ',
+  8: 'クラシック',
 };
 
 export function genreId(n: number): string {

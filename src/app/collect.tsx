@@ -6,11 +6,18 @@ import { WebView, type WebViewMessageEvent, type WebViewNavigation } from 'react
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import {
+  DIFFICULTY_KEYS,
+  DifficultyFilter,
+  toCourses,
+  type DifficultyKey,
+} from '@/components/ui/DifficultyFilter';
 import { Spacing } from '@/constants/theme';
 import { saveGenres, saveRecords, saveSongCatalog } from '@/db';
 import { genreTitle } from '@/scrape/genres';
 import { INJECT_SCRIPT } from '@/scrape/inject-script';
 import type { ScrapeMessage, Target } from '@/scrape/messages';
+import type { Course } from '@/types';
 
 // UA は固定しない。強制デスクトップ UA は donderhiroba の PC ログインフローを誘発し、
 // モバイルでのカード選択完了が /login.php に誤誘導される原因になる（DESIGN.md §5.2）。
@@ -19,6 +26,8 @@ const START_URL = 'https://donderhiroba.jp/index.php';
 interface DoneConfig {
   retryTargets?: Target[];
   concurrency?: number;
+  /** 取得対象難易度。未指定(undefined)の場合は全難易度を取得する。 */
+  difficulties?: Course[];
 }
 
 interface Progress {
@@ -37,6 +46,8 @@ export default function CollectScreen() {
   const [progress, setProgress] = useState<Progress | null>(null);
   const [status, setStatus] = useState('読み込み中…');
   const [failed, setFailed] = useState<Target[]>([]);
+  const [selectedDifficulties, setSelectedDifficulties] =
+    useState<DifficultyKey[]>(DIFFICULTY_KEYS);
 
   // 取得中フラグ。state は再描画が非同期なので、BackHandler など即時参照用に ref も持つ。
   const runningRef = useRef(false);
@@ -51,11 +62,14 @@ export default function CollectScreen() {
     return () => sub.remove();
   }, []);
 
-  const inject = useCallback((cfg: DoneConfig) => {
-    webRef.current?.injectJavaScript(
-      `window.__DONE_CONFIG__=${JSON.stringify(cfg)};\n${INJECT_SCRIPT}\ntrue;`,
-    );
-  }, []);
+  const inject = useCallback(
+    (cfg: DoneConfig) => {
+      webRef.current?.injectJavaScript(
+        `window.__DONE_CONFIG__=${JSON.stringify(cfg)};\n${INJECT_SCRIPT}\ntrue;`,
+      );
+    },
+    [],
+  );
 
   // ログイン状態は「表示中 URL」で判定する。Web アクセス(probe)判定は無効 URL アクセスで
   // donderhiroba 側の強制ログアウトを誘発したため撤去（ユーザー報告）。
@@ -75,7 +89,7 @@ export default function CollectScreen() {
     } else if (url.includes('score_list.php')) {
       const qs = url.split('?')[1] ?? '';
       const genre = new URLSearchParams(qs).get('genre') ?? '1';
-      setStatus(`「${genreTitle(Number(genre))}」を取得します`);
+      setStatus(`「${genreTitle(Number(genre))}」のスコアのみを取得します`);
     } else if (url.includes('score_detail.php')) {
       setStatus('このスコアを取得します');
     }
@@ -132,8 +146,11 @@ export default function CollectScreen() {
     setRunningState(true);
     setFailed([]);
     setProgress({ phase: 'catalog', message: '開始…', current: 0, total: 0 });
-    inject({});
-  }, [inject, setRunningState]);
+    // 全難易度選択中は difficulties を渡さない（全取得）
+    const difficulties = toCourses(selectedDifficulties);
+    const isAll = difficulties.length >= 5; // EASY/NORMAL/DIFFICULT/ONI/EXTRA = 5
+    inject(isAll ? {} : { difficulties });
+  }, [inject, selectedDifficulties, setRunningState]);
 
   const retry = useCallback(() => {
     if (!failed.length) return;
@@ -170,6 +187,12 @@ export default function CollectScreen() {
           </View>
         )}
 
+        {status !== 'このスコアを取得します' && (
+          <DifficultyFilter
+            selected={selectedDifficulties}
+            onChange={setSelectedDifficulties}
+          />
+        )}
         <View style={styles.buttonRow}>
           {running ? (
             <Button label="中止" onPress={cancel} primary />

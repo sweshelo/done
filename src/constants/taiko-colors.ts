@@ -1,3 +1,5 @@
+import type { ImageSourcePropType } from 'react-native';
+
 import type { Class, Course, Crown } from '@/types';
 
 /**
@@ -44,8 +46,60 @@ export const CourseLabels: Record<Course, string> = {
   EXTRA: 'おに裏',
 };
 
-/** ジャンル背景色。wikiwiki 確定後にジャンルID→色を埋める（暫定で未設定）。 */
-export const GenreColors: Record<string, string> = {};
+/**
+ * ジャンル基準色 (wikiwiki.jp の th 背景色より)。
+ * genreId (1..8) → 色。
+ */
+export const GenreColors: Record<string, string> = {
+  '1': '#49d5eb', // ポップス
+  '2': '#fe90d2', // アニメ
+  '3': '#fdc000', // キッズ
+  '4': '#cbcfde', // ボーカロイド
+  '5': '#cc8aeb', // ゲームミュージック
+  '6': '#ff7028', // ナムコオリジナル
+  '7': '#0acc2a', // バラエティ
+  '8': '#ded523', // クラシック
+};
+
+/**
+ * リスト行背景に使うジャンル暗色の輝度係数（0.0 〜 1.0）。
+ * 値を大きくするほど明るくなる。
+ */
+export const GENRE_DARK_FACTOR = 0.5;
+
+/** hex カラーの各チャンネルに係数を乗算して暗くする */
+function darkenHex(hex: string, factor: number): string {
+  const n = parseInt(hex.replace('#', ''), 16);
+  const r = Math.round(((n >> 16) & 0xff) * factor);
+  const g = Math.round(((n >> 8) & 0xff) * factor);
+  const b = Math.round((n & 0xff) * factor);
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+}
+
+/**
+ * ジャンル背景色（暗色版）。
+ * 基準色 × GENRE_DARK_FACTOR で計算する。
+ * リスト行の背景などデザイン用途に使用。
+ */
+export const GenreColorsDark: Record<string, string> = Object.fromEntries(
+  Object.entries(GenreColors).map(([id, color]) => [id, darkenHex(color, GENRE_DARK_FACTOR)]),
+);
+
+/**
+ * 王冠画像マッパー。
+ * 0.png=PLAYED, 1.png=CLEAR, 2.png=FULL_COMBO, 3.png=DONDAFUL_COMBO
+ * NO_PLAY はプレイ記録に存在しないため省略。
+ */
+export const CrownImages: Partial<Record<Crown, ImageSourcePropType>> = {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  PLAYED: require('../../assets/images/crown/0.png') as ImageSourcePropType,
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  CLEAR: require('../../assets/images/crown/1.png') as ImageSourcePropType,
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  FULL_COMBO: require('../../assets/images/crown/2.png') as ImageSourcePropType,
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  DONDAFUL_COMBO: require('../../assets/images/crown/3.png') as ImageSourcePropType,
+};
 
 /** Class（段位/雅）ラベル */
 export const ClassLabels: Record<Class, string> = {

@@ -142,21 +142,35 @@ export async function saveRecords(db: SQLiteDatabase, records: DoneRecord[]): Pr
 }
 
 // ---------------------------------------------------------------------------
-// 記録閲覧用クエリ（次フェーズで UI から利用する骨組み）
+// 記録閲覧用クエリ
 // ---------------------------------------------------------------------------
 
 export interface RecordFilter {
+  /** 曲名部分一致 (LIKE) */
+  titleQuery?: string;
+  /** ジャンル絞り込み */
   genreId?: string;
-  course?: Course;
-  crown?: Crown;
-  class?: Class;
+  /** 難易度絞り込み（複数選択）。おに裏 (EXTRA) はおに (ONI) と同等に扱う呼び出し側で展開すること */
+  courses?: Course[];
+  /** クリア王冠絞り込み（複数選択） */
+  crowns?: Crown[];
+  /** 極マーク絞り込み（複数選択）。Class の全8種を個別指定可能 */
+  classes?: Class[];
   minStar?: number;
   maxStar?: number;
   tier?: string;
   minScore?: number;
 }
 
-export type RecordSortKey = 'score' | 'star' | 'tier' | 'updatedAt' | 'ranking';
+export type RecordSortKey =
+  | 'score'
+  | 'baseScore'
+  | 'star'
+  | 'tier'
+  | 'updatedAt'
+  | 'ranking'
+  | 'achievement'
+  | 'totalNotes';
 
 export interface RecordSort {
   key: RecordSortKey;
@@ -172,17 +186,35 @@ const LATEST_PER_CHART = /* sql */ `
   ) m ON m.song_number = r.song_number AND m.course = r.course AND m.mx = r.updated_at
 `;
 
-const SORT_COLUMN: Record<RecordSortKey, string> = {
+/**
+ * 達成率 = good / (good + ok + ng)
+ * total_notes = good + ok + ng（サブソートにも使う）
+ * base_score = score_total - pound * 100（素点）
+ */
+const COMPUTED_COLS = /* sql */ `
+  (r.good + r.ok + r.ng) AS total_notes,
+  CASE WHEN (r.good + r.ok + r.ng) > 0
+    THEN CAST(r.good AS REAL) / (r.good + r.ok + r.ng)
+    ELSE 0
+  END AS achievement,
+  (r.score_total - r.pound * 100) AS base_score
+`;
+
+const SORT_CLAUSE: Record<RecordSortKey, string> = {
   score: 'r.score_total',
+  baseScore: 'base_score',
   star: 'lv.star',
   tier: 'lv.tier',
   updatedAt: 'r.updated_at',
   ranking: 'r.ranking',
+  // 達成率降順、同率は総ノーツ数降順（難しい曲優先）
+  achievement: 'achievement, total_notes',
+  totalNotes: 'total_notes',
 };
 
 /**
- * フィルタ/ソート条件から記録一覧クエリを組み立てる骨組み。
- * 既定では各譜面の最新記録を返す。条件は後から追加していく。
+ * フィルタ/ソート条件から記録一覧クエリを組み立てる。
+ * 既定では各譜面の最新記録を返す。
  */
 export function buildRecordQuery(
   filter: RecordFilter = {},
@@ -191,17 +223,24 @@ export function buildRecordQuery(
   const where: string[] = [];
   const params: (string | number)[] = [];
 
-  if (filter.course) {
-    where.push('r.course = ?');
-    params.push(filter.course);
+  if (filter.titleQuery) {
+    where.push('s.title LIKE ?');
+    params.push(`%${filter.titleQuery}%`);
   }
-  if (filter.crown) {
-    where.push('r.crown = ?');
-    params.push(filter.crown);
+  if (filter.courses && filter.courses.length > 0) {
+    const placeholders = filter.courses.map(() => '?').join(', ');
+    where.push(`r.course IN (${placeholders})`);
+    params.push(...filter.courses);
   }
-  if (filter.class) {
-    where.push('r.class = ?');
-    params.push(filter.class);
+  if (filter.crowns && filter.crowns.length > 0) {
+    const placeholders = filter.crowns.map(() => '?').join(', ');
+    where.push(`r.crown IN (${placeholders})`);
+    params.push(...filter.crowns);
+  }
+  if (filter.classes && filter.classes.length > 0) {
+    const placeholders = filter.classes.map(() => '?').join(', ');
+    where.push(`r.class IN (${placeholders})`);
+    params.push(...filter.classes);
   }
   if (filter.minScore != null) {
     where.push('r.score_total >= ?');
@@ -224,17 +263,32 @@ export function buildRecordQuery(
     params.push(filter.genreId);
   }
 
-  const col = SORT_COLUMN[sort.key];
-  const dir = sort.desc ? 'DESC' : 'ASC';
+  const sortCol = SORT_CLAUSE[sort.key];
+  const dir = sort.desc !== false ? 'DESC' : 'ASC';
+
+  // achievement ソートは複数カラムなので方向をそれぞれ付与
+  // 副ソート: スコア降順 → 総ノーツ数降順（難しい曲・高得点を優先）
+  const orderClause =
+    sort.key === 'achievement'
+      ? `achievement ${dir}, r.score_total ${dir}, total_notes ${dir}`
+      : `${sortCol} ${dir}`;
 
   const sql = /* sql */ `
-    SELECT r.*, s.title AS song_title, lv.star AS star, lv.tier AS tier
+    SELECT
+      r.*,
+      s.title AS song_title,
+      lv.star AS star,
+      lv.tier AS tier,
+      ${COMPUTED_COLS},
+      (SELECT GROUP_CONCAT(gs_sub.genre_id)
+       FROM genre_songs gs_sub
+       WHERE gs_sub.song_number = r.song_number) AS genre_ids
     FROM (${LATEST_PER_CHART}) r
     JOIN songs s ON s.number = r.song_number
     LEFT JOIN levels lv ON lv.song_number = r.song_number AND lv.course = r.course
     ${filter.genreId ? 'JOIN genre_songs gs ON gs.song_number = r.song_number' : ''}
     ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
-    ORDER BY ${col} ${dir}
+    ORDER BY ${orderClause}
   `;
 
   return { sql, params };

@@ -9,16 +9,18 @@
  *   - それ以外                 → 全ジャンル全スコア (full モード)
  * retryTargets が指定された場合は常に detail フローで上書きされる。
  */
+import type { Record as DoneRecord } from '../types';
 import { withConcurrency } from './concurrency';
-import { allGenres, genreId, genreTitle, GENRE_COUNT } from './genres';
+import { allGenres, GENRE_COUNT, genreId, genreTitle } from './genres';
 import type { CatalogSongPayload, ScrapeMessage, Target } from './messages';
 import { parseDifficulty, toRecord } from './parsers';
 import { fetchDetailRecord, fetchGenreSongs } from './scraper';
-import type { Record as DoneRecord } from '../types';
 
 interface DoneConfig {
   retryTargets?: Target[];
   concurrency?: number;
+  /** 取得対象難易度。未指定(undefined)の場合は全難易度を取得する。 */
+  difficulties?: string[]; // Course[] だが inject バンドル内では文字列として扱う
 }
 
 declare const window: Window & {
@@ -164,6 +166,13 @@ void (async () => {
             difficulty: r.difficulty,
           })),
       );
+    }
+
+    // 難易度フィルタが指定されていれば対象を絞り込む
+    // parseDifficulty で level 番号 → Course 文字列に変換して照合する
+    if (cfg.difficulties && cfg.difficulties.length > 0) {
+      const allowed = new Set(cfg.difficulties);
+      targets = targets.filter((t) => allowed.has(parseDifficulty(t.difficulty)));
     }
 
     // Phase 2: 詳細スコアを並列取得（個別エラーは失敗リストに収集）
