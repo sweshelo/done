@@ -56,6 +56,9 @@ export default function CollectScreen() {
     setRunning(v);
   }, []);
 
+  // 初期化フラグ: records が空の状態で開始した取得かどうか
+  const isInitialRef = useRef(false);
+
   // 取得中は Android の物理戻るを消費し、WebView の戻り遷移で取得が止まるのを防ぐ。
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => runningRef.current);
@@ -122,7 +125,7 @@ export default function CollectScreen() {
           break;
 
         case 'complete': {
-          const inserted = await saveRecords(db, msg.records);
+          const inserted = await saveRecords(db, msg.records, isInitialRef.current);
           setFailed(msg.failedTargets);
           setRunningState(false);
           setProgress(null);
@@ -142,15 +145,25 @@ export default function CollectScreen() {
     [db, setRunningState],
   );
 
-  const start = useCallback(() => {
+  const start = useCallback(async () => {
+    // records が1件もない場合は初期化として全難易度を取得する
+    const countRow = await db.getFirstAsync<{ cnt: number }>('SELECT COUNT(*) AS cnt FROM records');
+    const isEmpty = (countRow?.cnt ?? 0) === 0;
+    isInitialRef.current = isEmpty;
+
     setRunningState(true);
     setFailed([]);
     setProgress({ phase: 'catalog', message: '開始…', current: 0, total: 0 });
-    // 全難易度選択中は difficulties を渡さない（全取得）
-    const difficulties = toCourses(selectedDifficulties);
-    const isAll = difficulties.length >= 5; // EASY/NORMAL/DIFFICULT/ONI/EXTRA = 5
-    inject(isAll ? {} : { difficulties });
-  }, [inject, selectedDifficulties, setRunningState]);
+
+    if (isEmpty) {
+      setStatus('初回初期化のため全難易度を取得します');
+      inject({});
+    } else {
+      const difficulties = toCourses(selectedDifficulties);
+      const isAll = difficulties.length >= 5;
+      inject(isAll ? {} : { difficulties });
+    }
+  }, [db, inject, selectedDifficulties, setRunningState]);
 
   const retry = useCallback(() => {
     if (!failed.length) return;

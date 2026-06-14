@@ -106,9 +106,9 @@ export default function SettingsScreen() {
 
         {/* tier 更新セクション */}
         <ThemedView type="backgroundElement" style={styles.section}>
-          <ThemedText type="smallBold">全良★10 tier を更新</ThemedText>
+          <ThemedText type="smallBold">全良難易度表を更新</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
-            taiko.wiki の全良難易度表から ★10 の tier を取得して保存します。
+            taiko.wiki の全良難易度表を取得して保存します。
           </ThemedText>
           <Pressable
             style={[styles.btn, { backgroundColor: theme.backgroundSelected }, tierLoading && styles.btnDisabled]}

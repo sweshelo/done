@@ -1,7 +1,7 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   FlatList,
   Image,
@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { RecordDetailModal } from '@/components/RecordDetailModal';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import {
@@ -22,6 +23,7 @@ import {
   type DifficultyKey,
 } from '@/components/ui/DifficultyFilter';
 import {
+  ClassImages,
   ClassLabels,
   CourseColors,
   CourseLabels,
@@ -46,6 +48,7 @@ interface RecordListRow {
   good: number;
   ok: number;
   ng: number;
+  pound: number;
   star: number | null;
   tier: string | null;
   updated_at: number;
@@ -115,7 +118,7 @@ export default function RecordsScreen() {
   const [showFilter, setShowFilter] = useState(false);
   const [titleQuery, setTitleQuery] = useState('');
   const [selectedDifficulties, setSelectedDifficulties] =
-    useState<DifficultyKey[]>(DIFFICULTY_KEYS);
+    useState<DifficultyKey[]>(['ONI']);
   const [selectedGenreId, setSelectedGenreId] = useState<string | undefined>(undefined);
   const [selectedCrowns, setSelectedCrowns] = useState<Crown[]>([]);
   const [selectedClasses, setSelectedClasses] = useState<Class[]>([]);
@@ -123,6 +126,9 @@ export default function RecordsScreen() {
   // ---- ソート状態 ----
   const [sortKey, setSortKey] = useState<RecordSortKey>('score');
   const [sortDesc, setSortDesc] = useState(true);
+
+  // ---- 詳細モーダル ----
+  const [selectedRecord, setSelectedRecord] = useState<{ song_number: number; course: Course } | null>(null);
 
   const load = useCallback(async () => {
     const genreRows = await db.getAllAsync<{ id: string; title: string }>(
@@ -190,7 +196,6 @@ export default function RecordsScreen() {
 
   const hasFilter =
     titleQuery.trim() !== '' ||
-    selectedDifficulties.length < DIFFICULTY_KEYS.length ||
     selectedGenreId !== undefined ||
     selectedCrowns.length > 0 ||
     selectedClasses.length > 0;
@@ -339,9 +344,19 @@ export default function RecordsScreen() {
                 : 'まだ記録がありません。「取得」タブからデータを取得してください。'}
             </ThemedText>
           }
-          renderItem={({ item }) => <Row row={item} />}
+          renderItem={({ item }) => (
+            <Row row={item} sortKey={sortKey} onPress={() => setSelectedRecord({ song_number: item.song_number, course: item.course })} />
+          )}
         />
       </SafeAreaView>
+
+      {selectedRecord && (
+        <RecordDetailModal
+          songNumber={selectedRecord.song_number}
+          course={selectedRecord.course}
+          onClose={() => setSelectedRecord(null)}
+        />
+      )}
     </ThemedView>
   );
 }
@@ -350,7 +365,15 @@ export default function RecordsScreen() {
 // Row
 // ---------------------------------------------------------------------------
 
-function Row({ row }: { row: RecordListRow }) {
+function Row({
+  row,
+  sortKey,
+  onPress,
+}: {
+  row: RecordListRow;
+  sortKey: RecordSortKey;
+  onPress: () => void;
+}) {
   const achievePct = row.total_notes > 0 ? (row.achievement * 100).toFixed(2) : '—';
 
   // ジャンル背景色の計算
@@ -359,54 +382,99 @@ function Row({ row }: { row: RecordListRow }) {
   const color2 = genreIds.length >= 2 ? (GenreColorsDark[genreIds[1]] ?? GENRE_FALLBACK_COLOR) : color1;
   const isDual = genreIds.length >= 2 && color1 !== color2;
 
-  return (
-    <View style={styles.row}>
-      {/* ジャンル背景（対角線分割または単色） */}
-      {isDual ? (
-        <LinearGradient
-          colors={[color1, color1, color2, color2]}
-          locations={[0, 0.499, 0.501, 1]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={StyleSheet.absoluteFill}
-        />
-      ) : (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: color1 }]} />
-      )}
-
-      {/* 王冠アイコン */}
-      {CrownImages[row.crown] ? (
-        <Image
-          source={CrownImages[row.crown]}
-          style={styles.crownImage}
-          resizeMode="contain"
-        />
-      ) : (
-        <View style={[styles.crownDot, { backgroundColor: CrownColors[row.crown] }]} />
-      )}
-
-      {/* 難易度色バー */}
-      <View style={[styles.coursebar, { backgroundColor: CourseColors[row.course] }]} />
-
-      <View style={styles.rowMain}>
-        <ThemedText type="smallBold" numberOfLines={1}>
-          {row.song_title ?? `#${row.song_number}`}
-        </ThemedText>
+  // ソートキーに応じた rowRight 内容
+  let rowRightTop: React.ReactNode;
+  let rowRightBottom: React.ReactNode;
+  switch (sortKey) {
+    case 'score':
+      rowRightTop = <ThemedText type="smallBold">{row.score_total.toLocaleString()}</ThemedText>;
+      rowRightBottom = (
+        <View style={styles.rowRightBottomRow}>
+          <ThemedText type="small" themeColor="textSecondary">
+            {achievePct !== '—' ? `${achievePct}%` : '—'}
+          </ThemedText>
+          {ClassImages[row.class] && (
+            <Image source={ClassImages[row.class]} style={styles.classIcon} resizeMode="contain" />
+          )}
+        </View>
+      );
+      break;
+    case 'baseScore':
+      rowRightTop = <ThemedText type="smallBold">{row.base_score.toLocaleString()}</ThemedText>;
+      rowRightBottom = (
         <ThemedText type="small" themeColor="textSecondary">
-          {CourseLabels[row.course]}
-          {row.star != null ? ` ★${row.star}` : ''}
-          {row.tier ? ` / ${row.tier}` : ''}
+          {`(+ ${(row.score_total - row.base_score).toLocaleString()})`}
         </ThemedText>
-      </View>
-
-      <View style={styles.rowRight}>
-        <ThemedText type="smallBold">{row.score_total.toLocaleString()}</ThemedText>
+      );
+      break;
+    case 'achievement':
+      rowRightTop = (
+        <ThemedText type="smallBold">{achievePct !== '—' ? `${achievePct}%` : '—'}</ThemedText>
+      );
+      rowRightBottom = (
+        <ThemedText type="small" themeColor="textSecondary">
+          {row.total_notes > 0 ? `${row.good} / ${row.total_notes}` : '—'}
+        </ThemedText>
+      );
+      break;
+    default:
+      rowRightTop = <ThemedText type="smallBold">{row.score_total.toLocaleString()}</ThemedText>;
+      rowRightBottom = (
         <ThemedText type="small" themeColor="textSecondary">
           {achievePct !== '—' ? `${achievePct}%` : '—'}
           {row.total_notes > 0 ? ` / ${row.total_notes}` : ''}
         </ThemedText>
+      );
+      break;
+  }
+
+  return (
+    <Pressable onPress={onPress}>
+      <View style={styles.row}>
+        {/* ジャンル背景（対角線分割または単色） */}
+        {isDual ? (
+          <LinearGradient
+            colors={[color1, color1, color2, color2]}
+            locations={[0, 0.499, 0.501, 1]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+        ) : (
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: color1 }]} />
+        )}
+
+        {/* 王冠アイコン */}
+        {CrownImages[row.crown] ? (
+          <Image
+            source={CrownImages[row.crown]}
+            style={styles.crownImage}
+            resizeMode="contain"
+          />
+        ) : (
+          <View style={[styles.crownDot, { backgroundColor: CrownColors[row.crown] }]} />
+        )}
+
+        {/* 難易度色バー */}
+        <View style={[styles.coursebar, { backgroundColor: CourseColors[row.course] }]} />
+
+        <View style={styles.rowMain}>
+          <ThemedText type="smallBold" numberOfLines={1}>
+            {row.song_title ?? `#${row.song_number}`}
+          </ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            {CourseLabels[row.course]}
+            {row.star != null ? ` ★${row.star}` : ''}
+            {row.tier ? ` / ${row.tier}` : ''}
+          </ThemedText>
+        </View>
+
+        <View style={styles.rowRight}>
+          {rowRightTop}
+          {rowRightBottom}
+        </View>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -543,4 +611,6 @@ const styles = StyleSheet.create({
   coursebar: { width: 4, height: 32, borderRadius: 2, flexShrink: 0 },
   rowMain: { flex: 1, gap: 2 },
   rowRight: { alignItems: 'flex-end', gap: 2, flexShrink: 0 },
+  rowRightBottomRow: { flexDirection: 'row', alignItems: 'center', gap: 0 },
+  classIcon: { width: 24, height: 24 },
 });

@@ -112,3 +112,24 @@ export const ClassLabels: Record<Class, string> = {
   PURPLE_MIYABI: '雅(紫)',
   KIWAMI: '極',
 };
+
+/**
+ * 極マークアイコン画像マッパー。
+ * 1.png=IKI_WHITE .. 7.png=KIWAMI。NO_MARK は画像なし。
+ */
+export const ClassImages: Partial<Record<Class, ImageSourcePropType>> = {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  IKI_WHITE: require('../../assets/images/class/2.png') as ImageSourcePropType,
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  IKI_BRONZE: require('../../assets/images/class/3.png') as ImageSourcePropType,
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  IKI_SILVER: require('../../assets/images/class/4.png') as ImageSourcePropType,
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  GOLD_MIYABI: require('../../assets/images/class/5.png') as ImageSourcePropType,
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  PINK_MIYABI: require('../../assets/images/class/6.png') as ImageSourcePropType,
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  PURPLE_MIYABI: require('../../assets/images/class/7.png') as ImageSourcePropType,
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  KIWAMI: require('../../assets/images/class/8.png') as ImageSourcePropType,
+};

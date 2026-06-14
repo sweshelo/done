@@ -130,12 +130,20 @@ export async function insertRecordIfChanged(
   return true;
 }
 
-/** records をまとめて保存し、追加件数を返す */
-export async function saveRecords(db: SQLiteDatabase, records: DoneRecord[]): Promise<number> {
+/**
+ * records をまとめて保存し、追加件数を返す。
+ * isInitial=true のとき、各レコードの updated_at を 0（取得日不明）として保存する。
+ */
+export async function saveRecords(
+  db: SQLiteDatabase,
+  records: DoneRecord[],
+  isInitial = false,
+): Promise<number> {
   let inserted = 0;
   await db.withTransactionAsync(async () => {
     for (const r of records) {
-      if (await insertRecordIfChanged(db, r)) inserted++;
+      const record = isInitial ? { ...r, updatedAt: 0 } : r;
+      if (await insertRecordIfChanged(db, record)) inserted++;
     }
   });
   return inserted;
