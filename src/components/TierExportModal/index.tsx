@@ -2,15 +2,7 @@ import * as ScreenOrientation from 'expo-screen-orientation';
 import { shareAsync } from 'expo-sharing';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useRef, useState } from 'react';
-import {
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  View,
-  useWindowDimensions,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { captureRef } from 'react-native-view-shot';
 
 import { ThemedText } from '@/components/themed-text';
@@ -37,12 +29,13 @@ interface Props {
 
 export function TierExportModal({ onClose }: Props) {
   const db = useSQLiteContext();
-  const { width } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
   // TierTableView のルート View を直接キャプチャ（リサイズなし＝ネイティブ解像度・全高）
   const tableRef = useRef<View>(null);
   const [rows, setRows] = useState<TierTableRow[]>([]);
   const [sharing, setSharing] = useState(false);
+  // useWindowDimensions はノッチ/レターボックス領域を含む物理画面幅を返すため、
+  // 実際にモーダルが確保した表示領域を onLayout で実測してセル幅を算出する。
+  const [previewWidth, setPreviewWidth] = useState(0);
 
   // 表示中のみ横画面にロックし、閉じたら portrait に戻す
   useEffect(() => {
@@ -52,15 +45,12 @@ export function TierExportModal({ onClose }: Props) {
     };
   }, []);
 
-  // 横画面のセーフエリア（ノッチ）と余白を除いた実表示幅に 10 列を fit させる。
-  // これによりプレビューが両端で見切れず、表全体がシート内に収まる。
+  // 実測したプレビュー幅に 10 列を fit させる（プレビュー＝キャプチャ共通）
   const containerPadding = Spacing.two;
-  const PREVIEW_MARGIN = Spacing.three; // 左右の控えめな余白
-  const availableWidth = width - insets.left - insets.right - PREVIEW_MARGIN * 2;
   const cellWidth = Math.floor(
-    (availableWidth - containerPadding * 2 - CELL_GAP * (CELLS_PER_ROW - 1)) / CELLS_PER_ROW,
+    (previewWidth - containerPadding * 2 - CELL_GAP * (CELLS_PER_ROW - 1)) / CELLS_PER_ROW,
   );
-  // floor 由来の端数を含めずコンテンツ幅ちょうどに確定（右側の余白を出さない）
+  // floor 由来の端数を含めずコンテンツ幅ちょうどに確定
   const tableWidth =
     containerPadding * 2 + cellWidth * CELLS_PER_ROW + CELL_GAP * (CELLS_PER_ROW - 1);
 
@@ -143,8 +133,16 @@ export function TierExportModal({ onClose }: Props) {
             <ScrollView
               style={styles.previewScroll}
               contentContainerStyle={styles.previewContent}
+              onLayout={(e) => setPreviewWidth(e.nativeEvent.layout.width)}
             >
-              <TierTableView ref={tableRef} rows={rows} cellWidth={cellWidth} tableWidth={tableWidth} />
+              {cellWidth > 0 && (
+                <TierTableView
+                  ref={tableRef}
+                  rows={rows}
+                  cellWidth={cellWidth}
+                  tableWidth={tableWidth}
+                />
+              )}
             </ScrollView>
           )}
         </ThemedView>
