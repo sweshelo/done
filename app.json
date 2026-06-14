@@ -3,7 +3,6 @@
     "name": "done",
     "slug": "done",
     "version": "1.0.0",
-    "orientation": "portrait",
     "icon": "./assets/images/done-icon.png",
     "scheme": "done",
     "userInterfaceStyle": "automatic",
@@ -33,7 +32,14 @@
           }
         }
       ],
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-sharing",
+      [
+        "expo-screen-orientation",
+        {
+          "initialOrientation": "PORTRAIT_UP"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

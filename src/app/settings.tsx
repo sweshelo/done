@@ -129,7 +129,7 @@ export default function SettingsScreen() {
           <Pressable
             style={styles.dangerBtn}
             onPress={() =>
-              Alert.alert('tier データを削除', 'levels テーブルの tier / tier_rank を全て NULL にします。', [
+              Alert.alert('全良難易度表を削除', 'levels テーブルの tier / tier_rank を全て NULL にします。', [
                 { text: 'キャンセル', style: 'cancel' },
                 {
                   text: '削除する',

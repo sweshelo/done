@@ -14,6 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RecordDetailModal } from '@/components/RecordDetailModal';
+import { TierExportModal } from '@/components/TierExportModal';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import {
@@ -130,6 +131,9 @@ export default function RecordsScreen() {
   // ---- 詳細モーダル ----
   const [selectedRecord, setSelectedRecord] = useState<{ song_number: number; course: Course } | null>(null);
 
+  // ---- ★10 tier 表出力 ----
+  const [showTierExport, setShowTierExport] = useState(false);
+
   const load = useCallback(async () => {
     const genreRows = await db.getAllAsync<{ id: string; title: string }>(
       'SELECT id, title FROM genres ORDER BY id',
@@ -211,6 +215,12 @@ export default function RecordsScreen() {
               {rows.length} 件
             </ThemedText>
           </View>
+          <Pressable
+            style={[styles.filterToggle, { backgroundColor: theme.backgroundSelected }]}
+            onPress={() => setShowTierExport(true)}
+          >
+            <ThemedText type="smallBold">★10表</ThemedText>
+          </Pressable>
           <Pressable
             style={[styles.filterToggle, { backgroundColor: theme.backgroundSelected }, hasFilter && styles.filterToggleActive]}
             onPress={() => setShowFilter((v) => !v)}
@@ -356,6 +366,9 @@ export default function RecordsScreen() {
           course={selectedRecord.course}
           onClose={() => setSelectedRecord(null)}
         />
+      )}
+      {showTierExport && (
+        <TierExportModal onClose={() => setShowTierExport(false)} />
       )}
     </ThemedView>
   );
