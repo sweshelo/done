@@ -7,9 +7,10 @@ import { WebView, type WebViewMessageEvent, type WebViewNavigation } from 'react
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import {
+  DIFFICULTY_KEYS,
   DifficultyFilter,
   toCourses,
-  type DifficultyKey
+  type DifficultyKey,
 } from '@/components/ui/DifficultyFilter';
 import { Spacing } from '@/constants/theme';
 import { saveGenres, saveRecords, saveSongCatalog } from '@/db';
@@ -48,6 +49,9 @@ export default function CollectScreen() {
   const [failed, setFailed] = useState<Target[]>([]);
   const [selectedDifficulties, setSelectedDifficulties] =
     useState<DifficultyKey[]>(['ONI']);
+  const [isEmpty, setIsEmpty] = useState(false);
+  const [showInitMsg, setShowInitMsg] = useState(false);
+  const initMsgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 取得中フラグ。state は再描画が非同期なので、BackHandler など即時参照用に ref も持つ。
   const runningRef = useRef(false);
@@ -58,6 +62,19 @@ export default function CollectScreen() {
 
   // 初期化フラグ: records が空の状態で開始した取得かどうか
   const isInitialRef = useRef(false);
+
+  // マウント時に records 件数を確認し、空なら初期化モードとして扱う
+  useEffect(() => {
+    db.getFirstAsync<{ cnt: number }>('SELECT COUNT(*) AS cnt FROM records').then((row) =>
+      setIsEmpty((row?.cnt ?? 0) === 0),
+    );
+  }, [db]);
+
+  const showInitMessage = useCallback(() => {
+    setShowInitMsg(true);
+    if (initMsgTimerRef.current) clearTimeout(initMsgTimerRef.current);
+    initMsgTimerRef.current = setTimeout(() => setShowInitMsg(false), 2000);
+  }, []);
 
   // 取得中は Android の物理戻るを消費し、WebView の戻り遷移で取得が止まるのを防ぐ。
   useEffect(() => {
@@ -85,7 +102,7 @@ export default function CollectScreen() {
     if (!url.includes('donderhiroba.jp')) return;
     if (url.includes('login.php')) {
       setLoggedIn(false);
-      setStatus('未ログイン — ログインしてください');
+      setStatus('この画面のブラウザを操作してドンだーひろばにログインしてください');
     } else if (url.includes('index.php')) {
       setLoggedIn(true);
       setStatus('ログイン済み — 取得できます');
@@ -126,6 +143,7 @@ export default function CollectScreen() {
 
         case 'complete': {
           const inserted = await saveRecords(db, msg.records, isInitialRef.current);
+          if (msg.records.length > 0) setIsEmpty(false);
           setFailed(msg.failedTargets);
           setRunningState(false);
           setProgress(null);
@@ -201,10 +219,22 @@ export default function CollectScreen() {
         )}
 
         {status !== 'このスコアを取得します' && (
-          <DifficultyFilter
-            selected={selectedDifficulties}
-            onChange={setSelectedDifficulties}
-          />
+          <View style={styles.filterWrap}>
+            <View style={[isEmpty && styles.filterDisabled]}>
+              <DifficultyFilter
+                selected={isEmpty ? DIFFICULTY_KEYS : selectedDifficulties}
+                onChange={setSelectedDifficulties}
+              />
+            </View>
+            {isEmpty && (
+              <Pressable style={StyleSheet.absoluteFill} onPress={showInitMessage} />
+            )}
+          </View>
+        )}
+        {showInitMsg && (
+          <ThemedView type="backgroundElement" style={styles.initMsgChip}>
+            <ThemedText type="small">初回のデータ取得は全件を取得します</ThemedText>
+          </ThemedView>
         )}
         <View style={styles.buttonRow}>
           {running ? (
@@ -289,6 +319,14 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   barFill: { height: '100%', borderRadius: 4, backgroundColor: '#e94560' },
+  filterWrap: { position: 'relative' },
+  filterDisabled: { opacity: 0.5, pointerEvents: 'none' },
+  initMsgChip: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.one,
+    borderRadius: 12,
+  },
   buttonRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   button: {
     paddingHorizontal: Spacing.three,

@@ -16,8 +16,8 @@ import {
   ClassLabels,
   CourseColors,
   CourseLabels,
-  CrownImages,
   CrownColors,
+  CrownImages,
 } from '@/constants/taiko-colors';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -126,14 +126,14 @@ export function RecordDetailModal({ songNumber, course, onClose }: Props) {
             </View>
 
             <View style={styles.statsGrid}>
-              <Stat label="達成率" value={achievePct !== '—' ? `${achievePct}%` : '—'} />
               <Stat label="良" value={String(latest.good)} />
               <Stat label="可" value={String(latest.ok)} />
               <Stat label="不可" value={String(latest.ng)} />
               <Stat label="最大コンボ" value={String(latest.combo)} />
+              <Stat label="連打数" value={`${latest.pound} (+ ${(latest.pound * 100).toLocaleString()})`} />
+              <Stat label="極スコア" value={ClassLabels[latest.class]} />
+              <Stat label="達成率" value={achievePct !== '—' ? `${achievePct}%` : '—'} />
               <Stat label="素点" value={latest.base_score.toLocaleString()} />
-              <Stat label="ポ数" value={`${latest.pound} (+ ${(latest.pound * 100).toLocaleString()})`} />
-              <Stat label="極マーク" value={ClassLabels[latest.class]} />
               <Stat label="取得日" value={formatDate(latest.updated_at)} />
             </View>
           </View>

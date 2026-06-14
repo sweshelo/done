@@ -417,6 +417,20 @@ function Row({
         </ThemedText>
       );
       break;
+    case 'updatedAt':
+      rowRightTop = (
+        <ThemedText type="smallBold">
+          {row.updated_at === 0
+            ? '初期化'
+            : new Date(row.updated_at).toLocaleDateString('ja-JP')}
+        </ThemedText>
+      );
+      rowRightBottom = (
+        <ThemedText type="small" themeColor="textSecondary">
+          {row.score_total.toLocaleString()}
+        </ThemedText>
+      );
+      break;
     default:
       rowRightTop = <ThemedText type="smallBold">{row.score_total.toLocaleString()}</ThemedText>;
       rowRightBottom = (
@@ -606,7 +620,7 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.two,
     overflow: 'hidden',
   },
-  crownImage: { width: 28, height: 28, flexShrink: 0 },
+  crownImage: { width: 36, height: 36, flexShrink: 0, marginHorizontal: -Spacing.two },
   crownDot: { width: 10, height: 10, borderRadius: 5, flexShrink: 0 },
   coursebar: { width: 4, height: 32, borderRadius: 2, flexShrink: 0 },
   rowMain: { flex: 1, gap: 2 },

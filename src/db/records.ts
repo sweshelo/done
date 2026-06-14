@@ -276,15 +276,26 @@ export function buildRecordQuery(
     params.push(filter.genreId);
   }
 
-  const sortCol = SORT_CLAUSE[sort.key];
   const dir = sort.desc !== false ? 'DESC' : 'ASC';
 
-  // achievement ソートは複数カラムなので方向をそれぞれ付与
-  // 副ソート: スコア降順 → 総ノーツ数降順（難しい曲・高得点を優先）
-  const orderClause =
-    sort.key === 'achievement'
-      ? `achievement ${dir}, r.score_total ${dir}, total_notes ${dir}`
-      : `${sortCol} ${dir}`;
+  let orderClause: string;
+  switch (sort.key) {
+    case 'achievement':
+      // 副ソート: スコア降順 → 総ノーツ数降順（難しい曲・高得点を優先）
+      orderClause = `achievement ${dir}, r.score_total ${dir}, total_notes ${dir}`;
+      break;
+    case 'star':
+      // ☆10 は tier_rank ASC（0 = 最難関）を副ソートとして付与。NULL は末尾。
+      orderClause = [
+        `lv.star ${dir}`,
+        `CASE WHEN lv.star = 10 AND lv.tier_rank IS NULL THEN 1 ELSE 0 END ASC`,
+        `CASE WHEN lv.star = 10 THEN lv.tier_rank END ASC`,
+      ].join(', ');
+      break;
+    default:
+      orderClause = `${SORT_CLAUSE[sort.key]} ${dir}`;
+      break;
+  }
 
   const sql = /* sql */ `
     SELECT
