@@ -46,6 +46,8 @@ interface DetailRow {
 interface Props {
   songNumber: number;
   course: Course;
+  /** 閲覧プレイヤーの太鼓番（自分=''） */
+  taikoNo: string;
   onClose: () => void;
 }
 
@@ -54,7 +56,7 @@ function formatDate(updatedAt: number): string {
   return new Date(updatedAt).toLocaleDateString('ja-JP');
 }
 
-export function RecordDetailModal({ songNumber, course, onClose }: Props) {
+export function RecordDetailModal({ songNumber, course, taikoNo, onClose }: Props) {
   const db = useSQLiteContext();
   const theme = useTheme();
   const [history, setHistory] = useState<DetailRow[]>([]);
@@ -72,12 +74,13 @@ export function RecordDetailModal({ songNumber, course, onClose }: Props) {
        FROM records r
        JOIN songs s ON s.number = r.song_number
        LEFT JOIN levels lv ON lv.song_number = r.song_number AND lv.course = r.course
-       WHERE r.song_number = ? AND r.course = ?
+       WHERE r.taiko_no = ? AND r.song_number = ? AND r.course = ?
        ORDER BY r.updated_at ASC`,
+      taikoNo,
       songNumber,
       course,
     ).then(setHistory);
-  }, [db, songNumber, course]);
+  }, [db, taikoNo, songNumber, course]);
 
   if (history.length === 0) return null;
 

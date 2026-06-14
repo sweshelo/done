@@ -82,3 +82,15 @@ export interface Genre {
 }
 
 export const COURSES: Course[] = ['EASY', 'NORMAL', 'DIFFICULT', 'ONI', 'EXTRA'];
+
+/**
+ * プレイヤー（自分 / ライバル）。taikoNo はドンだーひろばのユーザーID（太鼓番）。
+ * 自分は taikoNo = ''（センチネル）。取得URLでは省略され自分のスコアが返る。
+ */
+export interface Player {
+  taikoNo: string;
+  name: string;
+}
+
+/** 自分を表す太鼓番センチネル */
+export const SELF_TAIKO_NO = '';

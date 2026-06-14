@@ -33,10 +33,10 @@ import {
   GenreColorsDark,
 } from '@/constants/taiko-colors';
 import { Spacing } from '@/constants/theme';
-import { buildRecordQuery } from '@/db';
+import { buildRecordQuery, listPlayers } from '@/db';
 import type { RecordFilter, RecordSort, RecordSortKey } from '@/db/records';
 import { useTheme } from '@/hooks/use-theme';
-import type { Class, Course, Crown, Genre } from '@/types';
+import { SELF_TAIKO_NO, type Class, type Course, type Crown, type Genre, type Player } from '@/types';
 
 /** buildRecordQuery が返す一覧行（computed cols 込み） */
 interface RecordListRow {
@@ -115,6 +115,10 @@ export default function RecordsScreen() {
   const [rows, setRows] = useState<RecordListRow[]>([]);
   const [genres, setGenres] = useState<Pick<Genre, 'id' | 'title'>[]>([]);
 
+  // ---- 閲覧プレイヤー（自分 / ライバル） ----
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [selectedTaikoNo, setSelectedTaikoNo] = useState<string>(SELF_TAIKO_NO);
+
   // ---- フィルタ状態 ----
   const [showFilter, setShowFilter] = useState(false);
   const [titleQuery, setTitleQuery] = useState('');
@@ -144,6 +148,7 @@ export default function RecordsScreen() {
     const isAllCourses = courses.length >= 5;
 
     const filter: RecordFilter = {
+      taikoNo: selectedTaikoNo,
       titleQuery: titleQuery.trim() || undefined,
       courses: isAllCourses ? undefined : courses,
       crowns: selectedCrowns.length > 0 ? selectedCrowns : undefined,
@@ -157,6 +162,7 @@ export default function RecordsScreen() {
     setRows(result);
   }, [
     db,
+    selectedTaikoNo,
     titleQuery,
     selectedDifficulties,
     selectedGenreId,
@@ -166,18 +172,29 @@ export default function RecordsScreen() {
     sortDesc,
   ]);
 
-  // フォーカス時（他タブから戻った直後）にも最新データを取得する
+  // プレイヤー名簿の読み込み（取得タブでライバル追加された直後も反映）
+  const loadPlayers = useCallback(async () => {
+    const list = await listPlayers(db);
+    setPlayers(list);
+    // 選択中プレイヤーが削除されていたら自分に戻す
+    setSelectedTaikoNo((cur) =>
+      list.some((p) => p.taikoNo === cur) ? cur : SELF_TAIKO_NO,
+    );
+  }, [db]);
+
+  // フォーカス時（他タブから戻った直後）にも最新データ・名簿を取得する
   useFocusEffect(
     useCallback(() => {
       load();
-    }, [load]),
+      loadPlayers();
+    }, [load, loadPlayers]),
   );
 
   // フィルタ/ソート変更時は即座に再クエリ
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [titleQuery, selectedDifficulties, selectedGenreId, selectedCrowns, selectedClasses, sortKey, sortDesc]);
+  }, [selectedTaikoNo, titleQuery, selectedDifficulties, selectedGenreId, selectedCrowns, selectedClasses, sortKey, sortDesc]);
 
   const toggleCrown = (c: Crown) =>
     setSelectedCrowns((prev) =>
@@ -233,6 +250,22 @@ export default function RecordsScreen() {
             </ThemedText>
           </Pressable>
         </View>
+
+        {/* プレイヤー切替（ライバル登録時のみ表示） */}
+        {players.length > 1 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sortBar}>
+            <View style={styles.chipRow}>
+              {players.map((p) => (
+                <Chip
+                  key={p.taikoNo || 'self'}
+                  label={p.name}
+                  active={selectedTaikoNo === p.taikoNo}
+                  onPress={() => setSelectedTaikoNo(p.taikoNo)}
+                />
+              ))}
+            </View>
+          </ScrollView>
+        )}
 
         {/* フィルタパネル */}
         {showFilter && (
@@ -364,11 +397,12 @@ export default function RecordsScreen() {
         <RecordDetailModal
           songNumber={selectedRecord.song_number}
           course={selectedRecord.course}
+          taikoNo={selectedTaikoNo}
           onClose={() => setSelectedRecord(null)}
         />
       )}
       {showTierExport && (
-        <TierExportModal onClose={() => setShowTierExport(false)} />
+        <TierExportModal taikoNo={selectedTaikoNo} onClose={() => setShowTierExport(false)} />
       )}
     </ThemedView>
   );

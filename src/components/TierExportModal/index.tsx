@@ -24,10 +24,12 @@ interface DbRow {
 }
 
 interface Props {
+  /** 王冠を反映する閲覧プレイヤーの太鼓番（自分=''） */
+  taikoNo: string;
   onClose: () => void;
 }
 
-export function TierExportModal({ onClose }: Props) {
+export function TierExportModal({ taikoNo, onClose }: Props) {
   const db = useSQLiteContext();
   // TierTableView のルート View を直接キャプチャ（リサイズなし＝ネイティブ解像度・全高）
   const tableRef = useRef<View>(null);
@@ -66,11 +68,14 @@ export function TierExportModal({ onClose }: Props) {
          FROM records r
          INNER JOIN (
            SELECT song_number, course, MAX(updated_at) AS mx
-           FROM records GROUP BY song_number, course
+           FROM records WHERE taiko_no = ? GROUP BY song_number, course
          ) m ON m.song_number = r.song_number AND m.course = r.course AND m.mx = r.updated_at
+         WHERE r.taiko_no = ?
        ) latest ON latest.song_number = lv.song_number AND latest.course = lv.course
        WHERE lv.star = 10 AND lv.tier IS NOT NULL
        ORDER BY lv.tier_rank ASC, lv.song_number ASC`,
+      taikoNo,
+      taikoNo,
     ).then((dbRows) => {
       setRows(
         dbRows.map((r) => ({
@@ -83,7 +88,7 @@ export function TierExportModal({ onClose }: Props) {
         })),
       );
     });
-  }, [db]);
+  }, [db, taikoNo]);
 
   const handleShare = async () => {
     if (!tableRef.current || sharing) return;

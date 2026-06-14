@@ -8,11 +8,16 @@ const defaultFetch: Fetcher = (url) => globalThis.fetch(url).then((r) => r.text(
 export const GENRE_COUNT = 8;
 const BASE_URL = 'https://donderhiroba.jp';
 
+/** taiko_no クエリ。空（自分）なら付与しない。 */
+const taikoParam = (taikoNo: string): string =>
+  taikoNo ? `&taiko_no=${encodeURIComponent(taikoNo)}` : '';
+
 export async function fetchGenreSongs(
   genre: number,
+  taikoNo = '',
   fetcher: Fetcher = defaultFetch,
 ): Promise<RawSongListItem[]> {
-  const html = await fetcher(`${BASE_URL}/score_list.php?genre=${genre}`);
+  const html = await fetcher(`${BASE_URL}/score_list.php?genre=${genre}${taikoParam(taikoNo)}`);
   const dom = new DOMParser().parseFromString(html, 'text/html');
 
   return [...dom.querySelectorAll('.contentBox')].map((song) => {
@@ -47,9 +52,12 @@ export async function fetchGenreSongs(
 export async function fetchDetailRecord(
   id: string,
   difficulty: string,
+  taikoNo = '',
   fetcher: Fetcher = defaultFetch,
 ): Promise<RawDetailRecord> {
-  const html = await fetcher(`${BASE_URL}/score_detail.php?song_no=${id}&level=${difficulty}`);
+  const html = await fetcher(
+    `${BASE_URL}/score_detail.php?song_no=${id}&level=${difficulty}${taikoParam(taikoNo)}`,
+  );
   const dom = new DOMParser().parseFromString(html, 'text/html');
 
   const text = (selector: string): string | undefined =>
@@ -76,4 +84,30 @@ export async function fetchDetailRecord(
     dondafulComboCnt: text('.dondaful_combo_cnt'),
     ranking: text('.ranking'),
   };
+}
+
+/**
+ * 最近のプレイ履歴ページ (history_recent_score.php) を取得し、曲名と難易度を抽出する。
+ * このページからは song_no が得られないため曲名+難易度のみを返す（呼び出し側で逆引き）。
+ * page=1 が最新、数値を増やすほど過去に遡る（1ページ5曲）。
+ */
+export async function fetchRecentHistory(
+  page: number,
+  taikoNo = '',
+  fetcher: Fetcher = defaultFetch,
+): Promise<{ title: string; difficulty: string }[]> {
+  const html = await fetcher(
+    `${BASE_URL}/history_recent_score.php?page=${page}${taikoParam(taikoNo)}`,
+  );
+  const dom = new DOMParser().parseFromString(html, 'text/html');
+
+  return [...dom.querySelectorAll('.scoreUser')]
+    .map((entry) => {
+      const title = entry.querySelector('.songNameTitleScore h2')?.textContent?.trim();
+      // levelIcon の src 例: image/sp/640/icon_course02_5_640.png → 末尾手前の 5 が level(1..5)
+      const levelSrc = entry.querySelector('.levelIcon')?.getAttribute('src') ?? '';
+      const difficulty = levelSrc.match(/icon_course\d+_(\d+)_/)?.[1];
+      return title && difficulty ? { title, difficulty } : null;
+    })
+    .filter((e): e is { title: string; difficulty: string } => e !== null);
 }

@@ -17,8 +17,16 @@ export interface CatalogSongPayload {
   courses: Course[];
 }
 
+/** 最近プレイ履歴の1件（song_no は取得できないため曲名+難易度のみ） */
+export interface RecentHistoryEntry {
+  title: string;
+  difficulty: string; // level 1..5
+}
+
 export type ScrapeMessage =
-  | { type: 'progress'; phase: 'catalog' | 'detail'; message: string; current: number; total: number }
+  | { type: 'progress'; phase: 'catalog' | 'detail' | 'update'; message: string; current: number; total: number }
   | { type: 'catalog'; genres: { id: string; title: string }[]; songs: CatalogSongPayload[] }
-  | { type: 'complete'; records: DoneRecord[]; failedTargets: Target[] }
+  | { type: 'complete'; records: DoneRecord[]; failedTargets: Target[]; taikoNo?: string }
+  | { type: 'recentList'; entries: RecentHistoryEntry[] }
+  | { type: 'selfTaikoNo'; taikoNo: string }
   | { type: 'error'; message: string };

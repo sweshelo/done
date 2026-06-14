@@ -1,6 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import type { Class, Course, Crown, Record as DoneRecord } from '@/types';
+import { SELF_TAIKO_NO, type Class, type Course, type Crown, type Record as DoneRecord } from '@/types';
+import type { Target } from '@/scrape/messages';
 
 /** DB の records 行（snake_case） */
 interface RecordRow {
@@ -81,34 +82,38 @@ function hasChanged(latest: RecordRow, next: DoneRecord): boolean {
 
 async function latestRecord(
   db: SQLiteDatabase,
+  taikoNo: string,
   songNumber: number,
   course: Course,
 ): Promise<RecordRow | null> {
   return db.getFirstAsync<RecordRow>(
-    `SELECT * FROM records WHERE song_number = ? AND course = ?
+    `SELECT * FROM records WHERE taiko_no = ? AND song_number = ? AND course = ?
      ORDER BY updated_at DESC, id DESC LIMIT 1`,
+    taikoNo,
     songNumber,
     course,
   );
 }
 
 /**
- * 履歴保持 upsert。最新行と任意フィールドを比較し、差異があれば新しい行を追加する。
- * 過去の記録は上書きしない（SPEC の核心要件）。
+ * 履歴保持 upsert。同一プレイヤー(taiko_no)の最新行と任意フィールドを比較し、
+ * 差異があれば新しい行を追加する。過去の記録は上書きしない（SPEC の核心要件）。
  * @returns 行を追加したら true、変化なしでスキップしたら false
  */
 export async function insertRecordIfChanged(
   db: SQLiteDatabase,
   record: DoneRecord,
+  taikoNo: string = SELF_TAIKO_NO,
 ): Promise<boolean> {
-  const latest = await latestRecord(db, record.songNumber, record.course);
+  const latest = await latestRecord(db, taikoNo, record.songNumber, record.course);
   if (latest && !hasChanged(latest, record)) return false;
 
   await db.runAsync(
     `INSERT INTO records
-      (song_number, course, crown, class, score_total, good, ok, ng, combo, pound,
+      (taiko_no, song_number, course, crown, class, score_total, good, ok, ng, combo, pound,
        ranking, options, play, clear, fullcombo, dondafulcombo, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    taikoNo,
     record.songNumber,
     record.course,
     record.crown,
@@ -133,20 +138,57 @@ export async function insertRecordIfChanged(
 /**
  * records をまとめて保存し、追加件数を返す。
  * isInitial=true のとき、各レコードの updated_at を 0（取得日不明）として保存する。
+ * taikoNo で保存先プレイヤーを指定（既定=自分）。
  */
 export async function saveRecords(
   db: SQLiteDatabase,
   records: DoneRecord[],
   isInitial = false,
+  taikoNo: string = SELF_TAIKO_NO,
 ): Promise<number> {
   let inserted = 0;
   await db.withTransactionAsync(async () => {
     for (const r of records) {
       const record = isInitial ? { ...r, updatedAt: 0 } : r;
-      if (await insertRecordIfChanged(db, record)) inserted++;
+      if (await insertRecordIfChanged(db, record, taikoNo)) inserted++;
     }
   });
   return inserted;
+}
+
+/**
+ * 最近プレイ履歴の (曲名, 難易度) をローカル songs から song_number に逆引きし、
+ * 詳細取得用 Target[] を作る。履歴ページは song_no を返さないため曲名一致で解決する。
+ * 同名曲が複数あれば全候補を対象にする（SPEC: 確認のためのリクエストは避けられない）。
+ * @returns targets（id+difficulty で重複排除）と、解決できなかった曲名 unresolved
+ */
+export async function resolveTargetsByTitle(
+  db: SQLiteDatabase,
+  entries: { title: string; difficulty: string }[],
+): Promise<{ targets: Target[]; unresolved: string[] }> {
+  const targets: Target[] = [];
+  const seen = new Set<string>();
+  const unresolved: string[] = [];
+
+  for (const entry of entries) {
+    const rows = await db.getAllAsync<{ number: number }>(
+      'SELECT number FROM songs WHERE title = ?',
+      entry.title,
+    );
+    if (rows.length === 0) {
+      unresolved.push(entry.title);
+      continue;
+    }
+    for (const row of rows) {
+      const id = String(row.number);
+      const key = `${id}:${entry.difficulty}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      targets.push({ id, name: entry.title, genreIds: [], difficulty: entry.difficulty });
+    }
+  }
+
+  return { targets, unresolved };
 }
 
 // ---------------------------------------------------------------------------
@@ -154,6 +196,8 @@ export async function saveRecords(
 // ---------------------------------------------------------------------------
 
 export interface RecordFilter {
+  /** 閲覧プレイヤーの太鼓番。既定=自分('') */
+  taikoNo?: string;
   /** 曲名部分一致 (LIKE) */
   titleQuery?: string;
   /** ジャンル絞り込み */
@@ -185,13 +229,17 @@ export interface RecordSort {
   desc?: boolean;
 }
 
-/** 各 (song_number, course) の最新行のみ */
+/**
+ * 指定プレイヤー(taiko_no)の各 (song_number, course) の最新行のみ。
+ * 内側集約と外側 r の両方を taiko_no で絞る（'?' は taiko_no を2回バインド）。
+ */
 const LATEST_PER_CHART = /* sql */ `
   SELECT r.* FROM records r
   JOIN (
     SELECT song_number, course, MAX(updated_at) AS mx
-    FROM records GROUP BY song_number, course
+    FROM records WHERE taiko_no = ? GROUP BY song_number, course
   ) m ON m.song_number = r.song_number AND m.course = r.course AND m.mx = r.updated_at
+  WHERE r.taiko_no = ?
 `;
 
 /**
@@ -229,7 +277,10 @@ export function buildRecordQuery(
   sort: RecordSort = { key: 'updatedAt', desc: true },
 ): { sql: string; params: (string | number)[] } {
   const where: string[] = [];
-  const params: (string | number)[] = [];
+  // LATEST_PER_CHART の '?' 2つ（内側集約 + 外側 r）に taiko_no をバインド。
+  // SQL テキスト上 FROM サブクエリが WHERE より前に来るため params 先頭に置く。
+  const taikoNo = filter.taikoNo ?? SELF_TAIKO_NO;
+  const params: (string | number)[] = [taikoNo, taikoNo];
 
   // tier ソート時は ★10 譜面のみを対象とする
   if (sort.key === 'tier') {
