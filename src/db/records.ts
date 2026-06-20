@@ -211,6 +211,116 @@ export async function resolveTargetsByTitle(
 }
 
 // ---------------------------------------------------------------------------
+// 今日の差分（SNS 出力用）
+// ---------------------------------------------------------------------------
+
+/**
+ * 「今日の差分」一覧の 1 行。after = 現在の最新状態、before = 今日より前の最新状態。
+ * before 系列が NULL の譜面は「本日が初記録（NEW）」を意味する。
+ * crown/class は最新行（base）から、数値スコアは最新のスコア入り行（scored）から取る。
+ */
+export interface TodayDiffRow {
+  song_number: number;
+  song_title: string | null;
+  level: Level;
+  star: number | null;
+  tier: string | null;
+  genre_ids: string | null;
+  // after（現在の最新）
+  crown: Crown;
+  class: Class;
+  score_total: number | null;
+  good: number | null;
+  ok: number | null;
+  ng: number | null;
+  combo: number | null;
+  pound: number | null;
+  // before（今日より前の最新。NULL = 本日初記録）
+  before_crown: Crown | null;
+  before_class: Class | null;
+  before_score_total: number | null;
+  before_good: number | null;
+  before_ok: number | null;
+  before_ng: number | null;
+  before_combo: number | null;
+  before_pound: number | null;
+}
+
+/**
+ * sinceMs（今日 0:00 のエポック ms）以降に更新された各譜面について、
+ * 今日より前の最新状態（before）と現在の最新状態（after）を並べて返す。
+ * 既定は自分（taiko_no=''）。記録は追記専用のため、当日中に複数回更新しても
+ * 「今日より前の最新」と「現在の最新」を比べることで当日トータルの伸びを表せる。
+ */
+export async function getTodayDiffs(
+  db: SQLiteDatabase,
+  sinceMs: number,
+  taikoNo: string = SELF_TAIKO_NO,
+): Promise<TodayDiffRow[]> {
+  const sql = /* sql */ `
+    WITH
+    today_charts AS (
+      SELECT DISTINCT song_number, level FROM records
+      WHERE taiko_no = $taiko AND updated_at >= $since
+    ),
+    after_base AS (
+      SELECT r.* FROM records r JOIN (
+        SELECT song_number, level, MAX(updated_at) AS mx
+        FROM records WHERE taiko_no = $taiko GROUP BY song_number, level
+      ) m ON m.song_number = r.song_number AND m.level = r.level AND m.mx = r.updated_at
+      WHERE r.taiko_no = $taiko
+    ),
+    after_scored AS (
+      SELECT r.* FROM records r JOIN (
+        SELECT song_number, level, MAX(updated_at) AS mx
+        FROM records WHERE taiko_no = $taiko AND score_total IS NOT NULL
+        GROUP BY song_number, level
+      ) m ON m.song_number = r.song_number AND m.level = r.level AND m.mx = r.updated_at
+      WHERE r.taiko_no = $taiko AND r.score_total IS NOT NULL
+    ),
+    before_base AS (
+      SELECT r.* FROM records r JOIN (
+        SELECT song_number, level, MAX(updated_at) AS mx
+        FROM records WHERE taiko_no = $taiko AND updated_at < $since
+        GROUP BY song_number, level
+      ) m ON m.song_number = r.song_number AND m.level = r.level AND m.mx = r.updated_at
+      WHERE r.taiko_no = $taiko AND r.updated_at < $since
+    ),
+    before_scored AS (
+      SELECT r.* FROM records r JOIN (
+        SELECT song_number, level, MAX(updated_at) AS mx
+        FROM records WHERE taiko_no = $taiko AND updated_at < $since AND score_total IS NOT NULL
+        GROUP BY song_number, level
+      ) m ON m.song_number = r.song_number AND m.level = r.level AND m.mx = r.updated_at
+      WHERE r.taiko_no = $taiko AND r.updated_at < $since AND r.score_total IS NOT NULL
+    )
+    SELECT
+      tc.song_number, tc.level,
+      s.title AS song_title,
+      lv.star AS star, lv.tier AS tier,
+      ab.crown AS crown, ab.class AS class,
+      asc_.score_total, asc_.good, asc_.ok, asc_.ng, asc_.combo, asc_.pound,
+      bb.crown AS before_crown, bb.class AS before_class,
+      bsc.score_total AS before_score_total, bsc.good AS before_good, bsc.ok AS before_ok,
+      bsc.ng AS before_ng, bsc.combo AS before_combo, bsc.pound AS before_pound,
+      (SELECT GROUP_CONCAT(gs.genre_id) FROM genre_songs gs WHERE gs.song_number = tc.song_number)
+        AS genre_ids
+    FROM today_charts tc
+    JOIN after_base ab ON ab.song_number = tc.song_number AND ab.level = tc.level
+    LEFT JOIN after_scored asc_ ON asc_.song_number = tc.song_number AND asc_.level = tc.level
+    LEFT JOIN before_base bb ON bb.song_number = tc.song_number AND bb.level = tc.level
+    LEFT JOIN before_scored bsc ON bsc.song_number = tc.song_number AND bsc.level = tc.level
+    JOIN songs s ON s.number = tc.song_number
+    LEFT JOIN charts lv ON lv.song_number = tc.song_number AND lv.level = tc.level
+    ORDER BY
+      CASE WHEN bb.song_number IS NULL THEN 0 ELSE 1 END ASC,
+      (COALESCE(asc_.score_total, 0) - COALESCE(bsc.score_total, 0)) DESC,
+      tc.song_number ASC
+  `;
+  return db.getAllAsync<TodayDiffRow>(sql, { $taiko: taikoNo, $since: sinceMs });
+}
+
+// ---------------------------------------------------------------------------
 // 記録閲覧用クエリ
 // ---------------------------------------------------------------------------
 

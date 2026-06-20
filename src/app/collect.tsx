@@ -6,6 +6,7 @@ import { WebView, type WebViewMessageEvent, type WebViewNavigation } from 'react
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { TodayDiffModal, startOfToday } from '@/components/TodayDiffModal';
 import {
   DIFFICULTY_KEYS,
   DifficultyFilter,
@@ -16,6 +17,7 @@ import { Spacing } from '@/constants/theme';
 import {
   addPlayer,
   getMeta,
+  getTodayDiffs,
   listPlayers,
   removePlayer,
   resolveTargetsByTitle,
@@ -91,6 +93,9 @@ export default function CollectScreen() {
 
   // ---- 最近のプレイ履歴から取得する曲数 ----
   const [recentCount, setRecentCount] = useState('20');
+
+  // ---- 取得完了後に自動表示する「今日の差分」モーダル ----
+  const [showTodayDiff, setShowTodayDiff] = useState(false);
 
   const loadPlayers = useCallback(async () => {
     const list = await listPlayers(db);
@@ -228,7 +233,8 @@ export default function CollectScreen() {
 
         case 'complete': {
           const taikoNo = msg.taikoNo ?? importTaikoNoRef.current;
-          const inserted = await saveRecords(db, msg.records, isInitialRef.current, taikoNo);
+          const wasInitial = isInitialRef.current;
+          const inserted = await saveRecords(db, msg.records, wasInitial, taikoNo);
           if (msg.records.length > 0 && taikoNo === selectedTaikoNo) setIsEmpty(false);
           setFailed(msg.failedTargets);
           setRunningState(false);
@@ -237,6 +243,11 @@ export default function CollectScreen() {
             `完了 — ${msg.records.length} 件取得 / ${inserted} 件更新` +
               (msg.failedTargets.length ? ` / 失敗 ${msg.failedTargets.length}` : ''),
           );
+          // 自分の取得（初回全件取得を除く）で当日差分があれば自動でモーダルを開く
+          if (taikoNo === SELF_TAIKO_NO && !wasInitial && inserted > 0) {
+            const diffs = await getTodayDiffs(db, startOfToday());
+            if (diffs.length > 0) setShowTodayDiff(true);
+          }
           break;
         }
 
@@ -524,6 +535,11 @@ export default function CollectScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* 取得完了後に当日差分を自動表示 */}
+      {showTodayDiff && (
+        <TodayDiffModal sinceMs={startOfToday()} onClose={() => setShowTodayDiff(false)} />
+      )}
     </ThemedView>
   );
 }

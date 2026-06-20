@@ -104,6 +104,24 @@ export const GenreColorsDark: Record<string, string> = Object.fromEntries(
   Object.entries(GenreColors).map(([id, color]) => [id, darkenHex(color, GENRE_DARK_FACTOR)]),
 );
 
+/** ジャンル色なし時のフォールバック（ダーク backgroundElement に相当） */
+export const GENRE_FALLBACK_COLOR = '#212225';
+
+/**
+ * カンマ区切りのジャンル ID 文字列（GROUP_CONCAT 由来）から行背景色を解決する。
+ * 2 ジャンル以上で色が異なる場合は対角グラデーション用に color1/color2 と isDual を返す。
+ */
+export function resolveGenreColors(genreIds: string | null): {
+  color1: string;
+  color2: string;
+  isDual: boolean;
+} {
+  const ids = genreIds ? genreIds.split(',').filter(Boolean) : [];
+  const color1 = GenreColorsDark[ids[0]] ?? GENRE_FALLBACK_COLOR;
+  const color2 = ids.length >= 2 ? (GenreColorsDark[ids[1]] ?? GENRE_FALLBACK_COLOR) : color1;
+  return { color1, color2, isDual: ids.length >= 2 && color1 !== color2 };
+}
+
 /**
  * 王冠画像マッパー。
  * 0.png=PLAYED, 1.png=CLEAR, 2.png=FULL_COMBO, 3.png=DONDAFUL_COMBO

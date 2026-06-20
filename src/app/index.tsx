@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RecordDetailModal } from '@/components/RecordDetailModal';
 import { TierExportModal } from '@/components/TierExportModal';
+import { TodayDiffModal, startOfToday } from '@/components/TodayDiffModal';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import {
@@ -30,7 +31,7 @@ import {
   LevelLabels,
   CrownColors,
   CrownImages,
-  GenreColorsDark,
+  resolveGenreColors,
 } from '@/constants/taiko-colors';
 import { Spacing } from '@/constants/theme';
 import { buildRecordQuery, listPlayers } from '@/db';
@@ -111,9 +112,6 @@ const CLASS_OPTIONS: Class[] = [
   'KIWAMI',
 ];
 
-/** ジャンル色なし時のフォールバック（ダーク backgroundElement に相当） */
-const GENRE_FALLBACK_COLOR = '#212225';
-
 export default function RecordsScreen() {
   const db = useSQLiteContext();
   const theme = useTheme();
@@ -142,6 +140,9 @@ export default function RecordsScreen() {
 
   // ---- ★10 tier 表出力 ----
   const [showTierExport, setShowTierExport] = useState(false);
+
+  // ---- 今日の差分出力 ----
+  const [showTodayDiff, setShowTodayDiff] = useState(false);
 
   const load = useCallback(async () => {
     const genreRows = await db.getAllAsync<{ id: string; title: string }>(
@@ -246,6 +247,12 @@ export default function RecordsScreen() {
               {rows.length} 件
             </ThemedText>
           </View>
+          <Pressable
+            style={[styles.filterToggle, { backgroundColor: theme.backgroundSelected }]}
+            onPress={() => setShowTodayDiff(true)}
+          >
+            <ThemedText type="smallBold">今日の差分</ThemedText>
+          </Pressable>
           <Pressable
             style={[styles.filterToggle, { backgroundColor: theme.backgroundSelected }]}
             onPress={() => setShowTierExport(true)}
@@ -420,6 +427,9 @@ export default function RecordsScreen() {
       {showTierExport && (
         <TierExportModal taikoNo={selectedTaikoNo} onClose={() => setShowTierExport(false)} />
       )}
+      {showTodayDiff && (
+        <TodayDiffModal sinceMs={startOfToday()} onClose={() => setShowTodayDiff(false)} />
+      )}
     </ThemedView>
   );
 }
@@ -444,10 +454,7 @@ function Row({
   const fmt = (n: number | null) => (n != null ? n.toLocaleString() : '—');
 
   // ジャンル背景色の計算
-  const genreIds = row.genre_ids ? row.genre_ids.split(',').filter(Boolean) : [];
-  const color1 = GenreColorsDark[genreIds[0]] ?? GENRE_FALLBACK_COLOR;
-  const color2 = genreIds.length >= 2 ? (GenreColorsDark[genreIds[1]] ?? GENRE_FALLBACK_COLOR) : color1;
-  const isDual = genreIds.length >= 2 && color1 !== color2;
+  const { color1, color2, isDual } = resolveGenreColors(row.genre_ids);
 
   // ソートキーに応じた rowRight 内容
   let rowRightTop: React.ReactNode;

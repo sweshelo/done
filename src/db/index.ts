@@ -14,11 +14,13 @@ export {
   saveRecords,
   insertRecordIfChanged,
   buildRecordQuery,
+  getTodayDiffs,
   rowToRecord,
   resolveTargetsByTitle,
   type RecordFilter,
   type RecordSort,
   type RecordSortKey,
+  type TodayDiffRow,
 } from './records';
 export { listPlayers, addPlayer, removePlayer } from './players';
 export {
