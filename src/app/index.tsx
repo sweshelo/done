@@ -60,6 +60,8 @@ interface RecordListRow {
   base_score: number | null;
   /** カンマ区切りのジャンル ID 文字列 (GROUP_CONCAT) */
   genre_ids: string | null;
+  /** 「自分と近い順」ソート時のみ付与される、自分の同譜面スコア */
+  self_score?: number | null;
 }
 
 /** ソートキーの表示ラベル */
@@ -209,13 +211,14 @@ export default function RecordsScreen() {
       prev.includes(cl) ? prev.filter((x) => x !== cl) : [...prev, cl],
     );
 
-  // 自分閲覧に戻ったら「自分と近い順」は無効なのでスコア順へ戻す
-  useEffect(() => {
-    if (selectedTaikoNo === SELF_TAIKO_NO && sortKey === 'closeToSelf') {
+  // プレイヤー切替。自分に戻したとき「自分と近い順」は無効なのでスコア順へ戻す。
+  const selectPlayer = (taiko: string) => {
+    setSelectedTaikoNo(taiko);
+    if (taiko === SELF_TAIKO_NO && sortKey === 'closeToSelf') {
       setSortKey('score');
       setSortDesc(true);
     }
-  }, [selectedTaikoNo, sortKey]);
+  };
 
   const toggleSort = (key: RecordSortKey) => {
     if (sortKey === key) {
@@ -271,7 +274,7 @@ export default function RecordsScreen() {
                   key={p.taikoNo || 'self'}
                   label={p.name}
                   active={selectedTaikoNo === p.taikoNo}
-                  onPress={() => setSelectedTaikoNo(p.taikoNo)}
+                  onPress={() => selectPlayer(p.taikoNo)}
                 />
               ))}
             </View>
@@ -451,7 +454,6 @@ function Row({
   let rowRightBottom: React.ReactNode;
   switch (sortKey) {
     case 'score':
-    case 'closeToSelf':
       rowRightTop = <ThemedText type="smallBold">{fmt(row.score_total)}</ThemedText>;
       rowRightBottom = (
         <View style={styles.rowRightBottomRow}>
@@ -464,6 +466,22 @@ function Row({
         </View>
       );
       break;
+    case 'closeToSelf': {
+      // 自分とのスコア差分を主表示にする（自分の記録が無い譜面は差分なし）
+      const diff =
+        row.score_total != null && row.self_score != null ? row.score_total - row.self_score : null;
+      rowRightTop = (
+        <ThemedText type="smallBold">
+          {diff != null ? `${diff >= 0 ? '+' : ''}${diff.toLocaleString()}` : '—'}
+        </ThemedText>
+      );
+      rowRightBottom = (
+        <ThemedText type="small" themeColor="textSecondary">
+          {fmt(row.score_total)}
+        </ThemedText>
+      );
+      break;
+    }
     case 'baseScore':
       rowRightTop = <ThemedText type="smallBold">{fmt(row.base_score)}</ThemedText>;
       rowRightBottom = (

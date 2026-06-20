@@ -428,6 +428,7 @@ export function buildRecordQuery(
       s.title AS song_title,
       lv.star AS star,
       lv.tier AS tier,
+      ${closeToSelfActive ? 'slf.score_total AS self_score,' : ''}
       ${COMPUTED_COLS},
       (SELECT GROUP_CONCAT(gs_sub.genre_id)
        FROM genre_songs gs_sub
