@@ -4,7 +4,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
  * スキーマバージョン。DDL を追加するたびに +1 し、MIGRATIONS に差分を追記する。
  * SQLiteProvider の onInit から runMigrations を呼ぶ。
  */
-export const DATABASE_VERSION = 6;
+export const DATABASE_VERSION = 7;
 
 /** バージョン v に上げるための DDL。index = 適用後のバージョン番号。 */
 const MIGRATIONS: Record<number, string> = {
@@ -155,6 +155,25 @@ const MIGRATIONS: Record<number, string> = {
 
     CREATE INDEX IF NOT EXISTS idx_records_user_song_level
       ON records (taiko_no, song_number, level, updated_at DESC);
+  `,
+
+  7: /* sql */ `
+    -- 楽曲のフォルダ機能。手動フォルダのみ DB に保持する
+    -- （ジャンル / もうすぐFC / もうすぐDC のスマートフォルダはコードで動的合成）。
+    -- folder_songs は曲単位（song_number）。FK ON のため folders 削除で CASCADE 削除する。
+    CREATE TABLE IF NOT EXISTS folders (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      name       TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS folder_songs (
+      folder_id   INTEGER NOT NULL REFERENCES folders(id) ON DELETE CASCADE,
+      song_number INTEGER NOT NULL REFERENCES songs(number),
+      added_at    INTEGER,
+      PRIMARY KEY (folder_id, song_number)
+    );
   `,
 };
 

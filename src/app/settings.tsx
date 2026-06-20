@@ -1,13 +1,24 @@
 import * as DocumentPicker from 'expo-document-picker';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
-import { exportDatabase, importDatabase, runMigrations, saveStarCounts, saveTierData } from '@/db';
+import {
+  ALMOST_MODE_KEY,
+  ALMOST_VALUE_KEY,
+  exportDatabase,
+  getAlmostConfig,
+  importDatabase,
+  runMigrations,
+  saveStarCounts,
+  saveTierData,
+  setMeta,
+} from '@/db';
+import type { AlmostMode } from '@/db/meta';
 import { useTheme } from '@/hooks/use-theme';
 import { fetchAllSongStars, fetchTierChart } from '@/scrape/taiko-wiki';
 
@@ -22,6 +33,29 @@ export default function SettingsScreen() {
   const [backupMessage, setBackupMessage] = useState<string | null>(null);
   const [exportLoading, setExportLoading] = useState(false);
   const [restoreLoading, setRestoreLoading] = useState(false);
+
+  // 「もうすぐFC/DC」スマートフォルダの判定閾値
+  const [almostMode, setAlmostMode] = useState<AlmostMode>('absolute');
+  const [almostValue, setAlmostValue] = useState('3');
+  const [almostMessage, setAlmostMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    getAlmostConfig(db).then((cfg) => {
+      setAlmostMode(cfg.mode);
+      setAlmostValue(String(cfg.value));
+    });
+  }, [db]);
+
+  const saveAlmost = async () => {
+    const num = Number(almostValue);
+    if (!Number.isFinite(num) || num <= 0) {
+      setAlmostMessage('1以上の数値を入力してください。');
+      return;
+    }
+    await setMeta(db, ALMOST_MODE_KEY, almostMode);
+    await setMeta(db, ALMOST_VALUE_KEY, String(num));
+    setAlmostMessage('保存しました。');
+  };
 
   const updateStars = async () => {
     setStarLoading(true);
@@ -178,6 +212,59 @@ export default function SettingsScreen() {
           )}
         </ThemedView>
 
+        {/* もうすぐFC/DC 閾値セクション */}
+        <ThemedView type="backgroundElement" style={styles.section}>
+          <ThemedText type="smallBold">もうすぐFC / DC の判定</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            フォルダタブの「もうすぐフルコンボ」「もうすぐドンだフルコンボ」に表示する条件です。
+            FCは不可(ng)、DCは可(ok)の残り数がこの閾値以下の曲を集めます。
+          </ThemedText>
+          <View style={styles.almostRow}>
+            <Pressable
+              style={[
+                styles.modeBtn,
+                { backgroundColor: theme.backgroundSelected },
+                almostMode === 'absolute' && styles.modeBtnActive,
+              ]}
+              onPress={() => setAlmostMode('absolute')}>
+              <ThemedText type="small" style={almostMode === 'absolute' ? styles.modeBtnActiveText : undefined}>
+                個数
+              </ThemedText>
+            </Pressable>
+            <Pressable
+              style={[
+                styles.modeBtn,
+                { backgroundColor: theme.backgroundSelected },
+                almostMode === 'percent' && styles.modeBtnActive,
+              ]}
+              onPress={() => setAlmostMode('percent')}>
+              <ThemedText type="small" style={almostMode === 'percent' ? styles.modeBtnActiveText : undefined}>
+                ％
+              </ThemedText>
+            </Pressable>
+            <TextInput
+              style={[styles.almostInput, { color: theme.text, borderColor: theme.textSecondary }]}
+              keyboardType="numeric"
+              value={almostValue}
+              onChangeText={setAlmostValue}
+              returnKeyType="done"
+            />
+            <ThemedText type="small" themeColor="textSecondary">
+              {almostMode === 'percent' ? '% 以下' : '個以下'}
+            </ThemedText>
+          </View>
+          <Pressable
+            style={[styles.btn, { backgroundColor: theme.backgroundSelected }]}
+            onPress={saveAlmost}>
+            <ThemedText type="smallBold">保存する</ThemedText>
+          </Pressable>
+          {almostMessage && (
+            <ThemedText type="small" themeColor="textSecondary">
+              {almostMessage}
+            </ThemedText>
+          )}
+        </ThemedView>
+
         {/* バックアップ / 復元セクション */}
         <ThemedView type="backgroundElement" style={styles.section}>
           <ThemedText type="smallBold">バックアップ / 復元</ThemedText>
@@ -294,6 +381,23 @@ const styles = StyleSheet.create({
     backgroundColor: '#F0F0F3',
   },
   btnDisabled: { opacity: 0.4 },
+  almostRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  modeBtn: {
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    borderRadius: Spacing.two,
+  },
+  modeBtnActive: { backgroundColor: '#e94560' },
+  modeBtnActiveText: { color: '#fff' },
+  almostInput: {
+    borderWidth: 1,
+    borderRadius: Spacing.two,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.one,
+    fontSize: 15,
+    width: 64,
+    textAlign: 'center',
+  },
   dangerBtn: {
     alignSelf: 'flex-start',
     paddingHorizontal: Spacing.three,

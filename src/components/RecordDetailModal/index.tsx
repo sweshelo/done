@@ -22,6 +22,8 @@ import {
   LevelLabels,
 } from '@/constants/taiko-colors';
 import { Spacing } from '@/constants/theme';
+import { addSongToFolder, getFoldersForSong, listManualFolders, removeSongFromFolder } from '@/db';
+import type { ManualFolderRow } from '@/db/folders';
 import { useTheme } from '@/hooks/use-theme';
 import { SELF_TAIKO_NO, type Class, type Crown, type Level } from '@/types';
 
@@ -77,6 +79,10 @@ export function RecordDetailModal({ songNumber, level, taikoNo, onClose }: Props
   const [compareScores, setCompareScores] = useState<PlayerScoreRow[]>([]);
   const [selectedPlayer, setSelectedPlayer] = useState<string | null>(null);
 
+  // 手動フォルダへの登録（曲単位）。自分の閲覧時のみ表示する。
+  const [manualFolders, setManualFolders] = useState<ManualFolderRow[]>([]);
+  const [songFolderIds, setSongFolderIds] = useState<Set<number>>(new Set());
+
   useEffect(() => {
     db.getAllAsync<DetailRow>(
       `SELECT r.id, s.title AS song_title, r.level, r.crown, r.class,
@@ -121,6 +127,32 @@ export function RecordDetailModal({ songNumber, level, taikoNo, onClose }: Props
       setSelectedPlayer(null);
     });
   }, [db, songNumber, level]);
+
+  // 手動フォルダ一覧と、この曲が属するフォルダを読み込む（自分の閲覧時のみ）。
+  // ライバル閲覧時は読み込まず、描画側で taikoNo を見て非表示にする。
+  useEffect(() => {
+    if (taikoNo !== SELF_TAIKO_NO) return;
+    void Promise.all([listManualFolders(db), getFoldersForSong(db, songNumber)]).then(
+      ([folders, ids]) => {
+        setManualFolders(folders);
+        setSongFolderIds(new Set(ids));
+      },
+    );
+  }, [db, taikoNo, songNumber]);
+
+  const toggleFolder = (folderId: number) => {
+    const member = songFolderIds.has(folderId);
+    // 楽観更新してから DB を反映する
+    setSongFolderIds((prev) => {
+      const next = new Set(prev);
+      if (member) next.delete(folderId);
+      else next.add(folderId);
+      return next;
+    });
+    void (member
+      ? removeSongFromFolder(db, folderId, songNumber)
+      : addSongToFolder(db, folderId, songNumber));
+  };
 
   const sendChallenge = (rivalTaikoNo: string, name: string) => {
     Alert.alert('挑戦状', `${name} に挑戦状を送りますか？`, [
@@ -211,6 +243,39 @@ export function RecordDetailModal({ songNumber, level, taikoNo, onClose }: Props
               <Stat label="取得日" value={formatDate(latest.updated_at)} />
             </View>
           </View>
+
+          {/* 手動フォルダへの登録（自分の閲覧時のみ） */}
+          {taikoNo === SELF_TAIKO_NO && manualFolders.length > 0 && (
+            <View style={styles.section}>
+              <ThemedText type="small" themeColor="textSecondary" style={styles.sectionLabel}>
+                フォルダ
+              </ThemedText>
+              <View style={styles.folderChipRow}>
+                {manualFolders.map((f) => {
+                  const member = songFolderIds.has(f.id);
+                  return (
+                    <Pressable
+                      key={f.id}
+                      onPress={() => toggleFolder(f.id)}
+                      style={[
+                        styles.folderChip,
+                        { backgroundColor: theme.backgroundSelected },
+                        member && styles.folderChipActive,
+                      ]}
+                    >
+                      <ThemedText
+                        type="small"
+                        style={member ? styles.folderChipActiveText : undefined}
+                      >
+                        {member ? '✓ ' : ''}
+                        {f.name}
+                      </ThemedText>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          )}
 
           {/* 成長グラフ（履歴2件以上で表示。折れ線はスコア入り2件以上のとき描画） */}
           {history.length >= 2 && (
@@ -603,6 +668,15 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.one,
     borderRadius: Spacing.two,
   },
+
+  folderChipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.one },
+  folderChip: {
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.one,
+    borderRadius: 12,
+  },
+  folderChipActive: { backgroundColor: '#e94560' },
+  folderChipActiveText: { color: '#fff' },
 
   historyList: { gap: Spacing.one },
   historyRow: {

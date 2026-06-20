@@ -22,6 +22,11 @@ export default function AppTabs() {
         <NativeTabs.Trigger.Icon sf="list.bullet" md="list" />
       </NativeTabs.Trigger>
 
+      <NativeTabs.Trigger name="folders">
+        <NativeTabs.Trigger.Label>フォルダ</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="folder" md="folder" />
+      </NativeTabs.Trigger>
+
       <NativeTabs.Trigger name="settings">
         <NativeTabs.Trigger.Label>設定</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="gearshape" md="settings" />

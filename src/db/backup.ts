@@ -15,7 +15,7 @@ import { DATABASE_VERSION } from './migrations';
  */
 
 /** FK 依存順（親 → 子）。INSERT はこの順、DELETE は逆順で行う。 */
-const TABLES = ['genres', 'songs', 'players', 'app_meta', 'charts', 'genre_songs', 'records'] as const;
+const TABLES = ['genres', 'songs', 'players', 'app_meta', 'charts', 'genre_songs', 'folders', 'folder_songs', 'records'] as const;
 
 function backupFileName(): string {
   const d = new Date();

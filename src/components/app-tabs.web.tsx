@@ -27,6 +27,9 @@ export default function AppTabs() {
           <TabTrigger name="home" href="/" asChild>
             <TabButton>記録</TabButton>
           </TabTrigger>
+          <TabTrigger name="folders" href="/folders" asChild>
+            <TabButton>フォルダ</TabButton>
+          </TabTrigger>
           <TabTrigger name="settings" href="/settings" asChild>
             <TabButton>設定</TabButton>
           </TabTrigger>
