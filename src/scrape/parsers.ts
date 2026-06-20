@@ -54,22 +54,27 @@ export function parseCount(text: string | undefined): number {
  */
 export function toRecord(raw: RawDetailRecord): DoneRecord {
   const hasHistory = raw.playCnt !== undefined;
+  // ライバルの詳細ページは同期されておらずスコアが欠落しうる。
+  // ハイスコア欄が無い場合は score を持たない記録（王冠のみ判明）として扱う。
+  const hasScore = raw.highScore !== undefined && raw.highScore !== '';
 
   return {
     songNumber: parseInt(raw.id, 10),
     level: parseDifficulty(raw.difficulty),
     crown: parseCrown(raw.crownSrc),
     class: parseClass(raw.classSrc),
-    score: {
-      total: parseCount(raw.highScore),
-      good: parseCount(raw.goodCnt),
-      ok: parseCount(raw.okCnt),
-      ng: parseCount(raw.ngCnt),
-      combo: parseCount(raw.comboCnt),
-      pound: parseCount(raw.poundCnt),
-      options: raw.options,
-      ranking: parseCount(raw.ranking),
-    },
+    score: hasScore
+      ? {
+          total: parseCount(raw.highScore),
+          good: parseCount(raw.goodCnt),
+          ok: parseCount(raw.okCnt),
+          ng: parseCount(raw.ngCnt),
+          combo: parseCount(raw.comboCnt),
+          pound: parseCount(raw.poundCnt),
+          options: raw.options,
+          ranking: parseCount(raw.ranking),
+        }
+      : undefined,
     history: hasHistory
       ? {
           play: parseCount(raw.playCnt),

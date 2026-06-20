@@ -4,7 +4,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
  * スキーマバージョン。DDL を追加するたびに +1 し、MIGRATIONS に差分を追記する。
  * SQLiteProvider の onInit から runMigrations を呼ぶ。
  */
-export const DATABASE_VERSION = 5;
+export const DATABASE_VERSION = 6;
 
 /** バージョン v に上げるための DDL。index = 適用後のバージョン番号。 */
 const MIGRATIONS: Record<number, string> = {
@@ -110,6 +110,49 @@ const MIGRATIONS: Record<number, string> = {
     ALTER TABLE records RENAME COLUMN course TO level;
 
     DROP INDEX IF EXISTS idx_records_user_song_course;
+    CREATE INDEX IF NOT EXISTS idx_records_user_song_level
+      ON records (taiko_no, song_number, level, updated_at DESC);
+  `,
+
+  6: /* sql */ `
+    -- ライバルのスコアは詳細ページが未同期で欠落しうる。score 系列を NULL 許容にし、
+    -- 「王冠のみ判明」の履歴行を score=NULL で保存できるようにする。
+    -- SQLite は列の NOT NULL 制約を後から外せないためテーブルを作り替える。
+    -- records は他テーブルから参照されないリーフ表（FK は songs を指すのみ）なので
+    -- FK ON のまま安全に再構築できる。id を明示コピーし AUTOINCREMENT を継続させる。
+    CREATE TABLE records_new (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      song_number   INTEGER NOT NULL REFERENCES songs(number),
+      level         TEXT NOT NULL,
+      crown         TEXT NOT NULL,
+      class         TEXT NOT NULL,
+      score_total   INTEGER,
+      good          INTEGER,
+      ok            INTEGER,
+      ng            INTEGER,
+      combo         INTEGER,
+      pound         INTEGER,
+      ranking       INTEGER,
+      options       TEXT NOT NULL DEFAULT '[]',
+      play          INTEGER,
+      clear         INTEGER,
+      fullcombo     INTEGER,
+      dondafulcombo INTEGER,
+      updated_at    INTEGER NOT NULL,
+      taiko_no      TEXT NOT NULL DEFAULT ''
+    );
+
+    INSERT INTO records_new
+      (id, song_number, level, crown, class, score_total, good, ok, ng, combo, pound,
+       ranking, options, play, clear, fullcombo, dondafulcombo, updated_at, taiko_no)
+    SELECT
+       id, song_number, level, crown, class, score_total, good, ok, ng, combo, pound,
+       ranking, options, play, clear, fullcombo, dondafulcombo, updated_at, taiko_no
+    FROM records;
+
+    DROP TABLE records;
+    ALTER TABLE records_new RENAME TO records;
+
     CREATE INDEX IF NOT EXISTS idx_records_user_song_level
       ON records (taiko_no, song_number, level, updated_at DESC);
   `,

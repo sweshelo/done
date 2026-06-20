@@ -40,7 +40,11 @@ export interface Record {
   level: Level;
   crown: Crown;
   class: Class;
-  score: {
+  /**
+   * 詳細スコア。ライバルのスコアは詳細ページが同期されておらず欠落しうるため optional。
+   * 欠落時は「王冠（crown/class）のみ判明」を意味する（DB では score 系列を NULL で保存）。
+   */
+  score?: {
     total: number;
     good: number;
     ok: number;

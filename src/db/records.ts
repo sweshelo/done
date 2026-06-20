@@ -3,19 +3,19 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { SELF_TAIKO_NO, type Class, type Level, type Crown, type Record as DoneRecord } from '@/types';
 import type { Target } from '@/scrape/messages';
 
-/** DB の records 行（snake_case） */
+/** DB の records 行（snake_case）。score 系列はライバルの欠落時 NULL になりうる。 */
 interface RecordRow {
   id: number;
   song_number: number;
   level: Level;
   crown: Crown;
   class: Class;
-  score_total: number;
-  good: number;
-  ok: number;
-  ng: number;
-  combo: number;
-  pound: number;
+  score_total: number | null;
+  good: number | null;
+  ok: number | null;
+  ng: number | null;
+  combo: number | null;
+  pound: number | null;
   ranking: number | null;
   options: string;
   play: number | null;
@@ -25,23 +25,26 @@ interface RecordRow {
   updated_at: number;
 }
 
-/** records 行をドメイン Record に変換 */
+/** records 行をドメイン Record に変換。score 欠落（王冠のみ）行は score: undefined。 */
 export function rowToRecord(row: RecordRow): DoneRecord {
   return {
     songNumber: row.song_number,
     level: row.level,
     crown: row.crown,
     class: row.class,
-    score: {
-      total: row.score_total,
-      good: row.good,
-      ok: row.ok,
-      ng: row.ng,
-      combo: row.combo,
-      pound: row.pound,
-      options: safeParseOptions(row.options),
-      ranking: row.ranking ?? 0,
-    },
+    score:
+      row.score_total != null
+        ? {
+            total: row.score_total,
+            good: row.good ?? 0,
+            ok: row.ok ?? 0,
+            ng: row.ng ?? 0,
+            combo: row.combo ?? 0,
+            pound: row.pound ?? 0,
+            options: safeParseOptions(row.options),
+            ranking: row.ranking ?? 0,
+          }
+        : undefined,
     history:
       row.play != null
         ? {
@@ -65,19 +68,24 @@ function safeParseOptions(json: string): string[] {
 }
 
 /**
- * 「記録が更新された」と判定するフィールド（ユーザー確定: 任意フィールド変化）。
- * いずれかが最新行と異なれば履歴行を追加する。
+ * スコア詳細が最新行と異なるか。next.score が無ければ（欠落）スコア変化なしとみなす。
+ * latest にスコアが無い（王冠のみ行）が next にスコアがある場合は変化ありとする。
  */
-function hasChanged(latest: RecordRow, next: DoneRecord): boolean {
+function scoreChangedFrom(latest: RecordRow, next: DoneRecord): boolean {
+  if (!next.score) return false;
+  if (latest.score_total == null) return true;
   return (
     latest.score_total !== next.score.total ||
-    latest.crown !== next.crown ||
-    latest.class !== next.class ||
     latest.good !== next.score.good ||
     latest.ok !== next.score.ok ||
     latest.ng !== next.score.ng ||
     latest.combo !== next.score.combo
   );
+}
+
+/** 王冠/極マークが最新行と異なるか。 */
+function crownChangedFrom(latest: RecordRow, next: DoneRecord): boolean {
+  return latest.crown !== next.crown || latest.class !== next.class;
 }
 
 async function latestRecord(
@@ -96,8 +104,12 @@ async function latestRecord(
 }
 
 /**
- * 履歴保持 upsert。同一プレイヤー(taiko_no)の最新行と任意フィールドを比較し、
- * 差異があれば新しい行を追加する。過去の記録は上書きしない（SPEC の核心要件）。
+ * 履歴保持 upsert。同一プレイヤー(taiko_no)の最新行と比較する。
+ * - スコア詳細が変化 → スコア込みの履歴行を追加（従来挙動）。
+ * - スコアが欠落 or 前回と完全一致だが王冠/極マークが変化 → score=NULL の「王冠のみ行」を追加
+ *   （ライバルの詳細未同期で王冠だけ新しいケースを、偽のスコアで上書きせず記録する）。
+ * - いずれも変化なし → スキップ。
+ * 過去の記録は決して上書きしない（SPEC の核心要件）。
  * @returns 行を追加したら true、変化なしでスキップしたら false
  */
 export async function insertRecordIfChanged(
@@ -106,7 +118,14 @@ export async function insertRecordIfChanged(
   taikoNo: string = SELF_TAIKO_NO,
 ): Promise<boolean> {
   const latest = await latestRecord(db, taikoNo, record.songNumber, record.level);
-  if (latest && !hasChanged(latest, record)) return false;
+
+  const scoreChanged = !latest ? record.score != null : scoreChangedFrom(latest, record);
+  const crownChanged = !latest || crownChangedFrom(latest, record);
+
+  // スコア込みで保存するのは「スコアがあり、かつ前回からスコアが変化した」場合のみ。
+  // それ以外で王冠/極マークだけ変化したら score=NULL の王冠のみ行を追加する。
+  const writeScore = record.score != null && scoreChanged;
+  if (!writeScore && !crownChanged) return false;
 
   await db.runAsync(
     `INSERT INTO records
@@ -118,14 +137,14 @@ export async function insertRecordIfChanged(
     record.level,
     record.crown,
     record.class,
-    record.score.total,
-    record.score.good,
-    record.score.ok,
-    record.score.ng,
-    record.score.combo,
-    record.score.pound,
-    record.score.ranking || null,
-    JSON.stringify(record.score.options ?? []),
+    writeScore ? record.score!.total : null,
+    writeScore ? record.score!.good : null,
+    writeScore ? record.score!.ok : null,
+    writeScore ? record.score!.ng : null,
+    writeScore ? record.score!.combo : null,
+    writeScore ? record.score!.pound : null,
+    writeScore ? record.score!.ranking || null : null,
+    writeScore ? JSON.stringify(record.score!.options ?? []) : '[]',
     record.history?.play ?? null,
     record.history?.clear ?? null,
     record.history?.fullcombo ?? null,
@@ -222,7 +241,9 @@ export type RecordSortKey =
   | 'updatedAt'
   // | 'ranking'
   | 'achievement'
-  | 'totalNotes';
+  | 'totalNotes'
+  /** 自分のスコアと近い順（ライバル閲覧時のみ有効） */
+  | 'closeToSelf';
 
 export interface RecordSort {
   key: RecordSortKey;
@@ -240,6 +261,37 @@ const LATEST_PER_CHART = /* sql */ `
     FROM records WHERE taiko_no = ? GROUP BY song_number, level
   ) m ON m.song_number = r.song_number AND m.level = r.level AND m.mx = r.updated_at
   WHERE r.taiko_no = ?
+`;
+
+/**
+ * 各 (song_number, level) の「スコアが入っている」最新行のみ（王冠のみ行 score=NULL は除外）。
+ * '?' は taiko_no を2回バインド。
+ */
+const LATEST_SCORED_PER_CHART = /* sql */ `
+  SELECT r.* FROM records r
+  JOIN (
+    SELECT song_number, level, MAX(updated_at) AS mx
+    FROM records WHERE taiko_no = ? AND score_total IS NOT NULL GROUP BY song_number, level
+  ) m ON m.song_number = r.song_number AND m.level = r.level AND m.mx = r.updated_at
+  WHERE r.taiko_no = ? AND r.score_total IS NOT NULL
+`;
+
+/**
+ * 各譜面の表示用「マージ済み最新行」。王冠/極マーク/更新日時は最新行(base)から、
+ * 数値スコア（と options/ranking）は最新のスコア入り行(sc)から取る。
+ * ライバルの王冠だけ新しくスコアが欠落/据え置きでも、王冠は最新・スコアは直近の実値を見せる。
+ * '?' は taiko_no を4回バインド（base 2 + sc 2）。
+ */
+const LATEST_MERGED = /* sql */ `
+  SELECT
+    base.id, base.song_number, base.level, base.crown, base.class,
+    sc.score_total, sc.good, sc.ok, sc.ng, sc.combo, sc.pound, sc.ranking,
+    COALESCE(sc.options, base.options) AS options,
+    base.play, base.clear, base.fullcombo, base.dondafulcombo,
+    base.updated_at, base.taiko_no
+  FROM (${LATEST_PER_CHART}) base
+  LEFT JOIN (${LATEST_SCORED_PER_CHART}) sc
+    ON sc.song_number = base.song_number AND sc.level = base.level
 `;
 
 /**
@@ -266,6 +318,8 @@ const SORT_CLAUSE: Record<RecordSortKey, string> = {
   // 達成率降順、同率は総ノーツ数降順（難しい曲優先）
   achievement: 'achievement, total_notes',
   totalNotes: 'total_notes',
+  // closeToSelf は専用の ORDER 句で扱う。自分閲覧時のフォールバック用にスコアを指定。
+  closeToSelf: 'r.score_total',
 };
 
 /**
@@ -277,10 +331,10 @@ export function buildRecordQuery(
   sort: RecordSort = { key: 'updatedAt', desc: true },
 ): { sql: string; params: (string | number)[] } {
   const where: string[] = [];
-  // LATEST_PER_CHART の '?' 2つ（内側集約 + 外側 r）に taiko_no をバインド。
+  // LATEST_MERGED の '?' 4つ（base 集約+外側、sc 集約+外側）に taiko_no をバインド。
   // SQL テキスト上 FROM サブクエリが WHERE より前に来るため params 先頭に置く。
   const taikoNo = filter.taikoNo ?? SELF_TAIKO_NO;
-  const params: (string | number)[] = [taikoNo, taikoNo];
+  const params: (string | number)[] = [taikoNo, taikoNo, taikoNo, taikoNo];
 
   // tier ソート時は ★10 譜面のみを対象とする
   if (sort.key === 'tier') {
@@ -329,11 +383,31 @@ export function buildRecordQuery(
 
   const dir = sort.desc !== false ? 'DESC' : 'ASC';
 
+  // 「自分と近い順」: ライバル閲覧時のみ有効。自分の最新スコア入り行を結合し差の絶対値で並べる。
+  const closeToSelfActive = sort.key === 'closeToSelf' && taikoNo !== SELF_TAIKO_NO;
+  if (closeToSelfActive) {
+    // self 結合の '?' 2つは FROM サブクエリ(4) の直後・WHERE より前に来るため index 4 に挿入。
+    params.splice(4, 0, SELF_TAIKO_NO, SELF_TAIKO_NO);
+  }
+
+  // スコア由来のソートでは score 欠落（王冠のみ）の譜面を常に末尾へ送る。
+  const SCORE_DERIVED: RecordSortKey[] = ['score', 'baseScore', 'achievement', 'totalNotes'];
+  const nullGuard = SCORE_DERIVED.includes(sort.key)
+    ? 'CASE WHEN r.score_total IS NULL THEN 1 ELSE 0 END ASC, '
+    : '';
+
   let orderClause: string;
   switch (sort.key) {
+    case 'closeToSelf':
+      orderClause = closeToSelfActive
+        ? // 自分の記録が無い譜面・スコア欠落は末尾。差が小さい順（近い順）。
+          'CASE WHEN r.score_total IS NULL OR slf.score_total IS NULL THEN 1 ELSE 0 END ASC, ' +
+          'ABS(r.score_total - slf.score_total) ASC'
+        : `CASE WHEN r.score_total IS NULL THEN 1 ELSE 0 END ASC, r.score_total DESC`;
+      break;
     case 'achievement':
       // 副ソート: スコア降順 → 総ノーツ数降順（難しい曲・高得点を優先）
-      orderClause = `achievement ${dir}, r.score_total ${dir}, total_notes ${dir}`;
+      orderClause = `${nullGuard}achievement ${dir}, r.score_total ${dir}, total_notes ${dir}`;
       break;
     case 'star':
       // ☆10 は tier_rank ASC（0 = 最難関）を副ソートとして付与。NULL は末尾。
@@ -344,7 +418,7 @@ export function buildRecordQuery(
       ].join(', ');
       break;
     default:
-      orderClause = `${SORT_CLAUSE[sort.key]} ${dir}`;
+      orderClause = `${nullGuard}${SORT_CLAUSE[sort.key]} ${dir}`;
       break;
   }
 
@@ -358,8 +432,9 @@ export function buildRecordQuery(
       (SELECT GROUP_CONCAT(gs_sub.genre_id)
        FROM genre_songs gs_sub
        WHERE gs_sub.song_number = r.song_number) AS genre_ids
-    FROM (${LATEST_PER_CHART}) r
+    FROM (${LATEST_MERGED}) r
     JOIN songs s ON s.number = r.song_number
+    ${closeToSelfActive ? `LEFT JOIN (${LATEST_SCORED_PER_CHART}) slf ON slf.song_number = r.song_number AND slf.level = r.level` : ''}
     LEFT JOIN charts lv ON lv.song_number = r.song_number AND lv.level = r.level
     ${filter.genreId ? 'JOIN genre_songs gs ON gs.song_number = r.song_number' : ''}
     ${where.length ? 'WHERE ' + where.join(' AND ') : ''}

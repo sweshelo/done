@@ -45,18 +45,19 @@ interface RecordListRow {
   level: Level;
   crown: Crown;
   class: Class;
-  score_total: number;
-  good: number;
-  ok: number;
-  ng: number;
-  pound: number;
+  // 王冠のみ行（ライバルのスコア欠落）では score 系列が NULL になりうる
+  score_total: number | null;
+  good: number | null;
+  ok: number | null;
+  ng: number | null;
+  pound: number | null;
   star: number | null;
   tier: string | null;
   updated_at: number;
-  total_notes: number;
-  achievement: number; // 0.0 ~ 1.0
+  total_notes: number | null;
+  achievement: number | null; // 0.0 ~ 1.0
   /** 素点 = score_total - pound * 100 */
-  base_score: number;
+  base_score: number | null;
   /** カンマ区切りのジャンル ID 文字列 (GROUP_CONCAT) */
   genre_ids: string | null;
 }
@@ -71,6 +72,7 @@ const SORT_LABELS: Record<RecordSortKey, string> = {
   // ranking: '全国ランキング',
   star: '☆の数',
   tier: '全良難易度',
+  closeToSelf: '自分と近い順',
 };
 
 const SORT_KEYS: RecordSortKey[] = [
@@ -82,6 +84,7 @@ const SORT_KEYS: RecordSortKey[] = [
   'updatedAt',
   'star',
   'tier',
+  'closeToSelf',
 ];
 
 /** クリア王冠（記録画面では NO_PLAY は除く） */
@@ -205,6 +208,14 @@ export default function RecordsScreen() {
     setSelectedClasses((prev) =>
       prev.includes(cl) ? prev.filter((x) => x !== cl) : [...prev, cl],
     );
+
+  // 自分閲覧に戻ったら「自分と近い順」は無効なのでスコア順へ戻す
+  useEffect(() => {
+    if (selectedTaikoNo === SELF_TAIKO_NO && sortKey === 'closeToSelf') {
+      setSortKey('score');
+      setSortDesc(true);
+    }
+  }, [selectedTaikoNo, sortKey]);
 
   const toggleSort = (key: RecordSortKey) => {
     if (sortKey === key) {
@@ -363,7 +374,9 @@ export default function RecordsScreen() {
         {/* ソートバー */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sortBar}>
           <View style={styles.chipRow}>
-            {SORT_KEYS.map((k) => (
+            {SORT_KEYS.filter(
+              (k) => k !== 'closeToSelf' || selectedTaikoNo !== SELF_TAIKO_NO,
+            ).map((k) => (
               <SortChip
                 key={k}
                 label={SORT_LABELS[k]}
@@ -421,7 +434,11 @@ function Row({
   sortKey: RecordSortKey;
   onPress: () => void;
 }) {
-  const achievePct = row.total_notes > 0 ? (row.achievement * 100).toFixed(2) : '—';
+  const achievePct =
+    row.total_notes != null && row.total_notes > 0
+      ? ((row.achievement ?? 0) * 100).toFixed(2)
+      : '—';
+  const fmt = (n: number | null) => (n != null ? n.toLocaleString() : '—');
 
   // ジャンル背景色の計算
   const genreIds = row.genre_ids ? row.genre_ids.split(',').filter(Boolean) : [];
@@ -434,7 +451,8 @@ function Row({
   let rowRightBottom: React.ReactNode;
   switch (sortKey) {
     case 'score':
-      rowRightTop = <ThemedText type="smallBold">{row.score_total.toLocaleString()}</ThemedText>;
+    case 'closeToSelf':
+      rowRightTop = <ThemedText type="smallBold">{fmt(row.score_total)}</ThemedText>;
       rowRightBottom = (
         <View style={styles.rowRightBottomRow}>
           <ThemedText type="small" themeColor="textSecondary">
@@ -447,10 +465,12 @@ function Row({
       );
       break;
     case 'baseScore':
-      rowRightTop = <ThemedText type="smallBold">{row.base_score.toLocaleString()}</ThemedText>;
+      rowRightTop = <ThemedText type="smallBold">{fmt(row.base_score)}</ThemedText>;
       rowRightBottom = (
         <ThemedText type="small" themeColor="textSecondary">
-          {`(+ ${(row.score_total - row.base_score).toLocaleString()})`}
+          {row.score_total != null && row.base_score != null
+            ? `(+ ${(row.score_total - row.base_score).toLocaleString()})`
+            : '—'}
         </ThemedText>
       );
       break;
@@ -460,7 +480,7 @@ function Row({
       );
       rowRightBottom = (
         <ThemedText type="small" themeColor="textSecondary">
-          {row.total_notes > 0 ? `${row.good} / ${row.total_notes}` : '—'}
+          {row.total_notes != null && row.total_notes > 0 ? `${row.good} / ${row.total_notes}` : '—'}
         </ThemedText>
       );
       break;
@@ -474,16 +494,16 @@ function Row({
       );
       rowRightBottom = (
         <ThemedText type="small" themeColor="textSecondary">
-          {row.score_total.toLocaleString()}
+          {fmt(row.score_total)}
         </ThemedText>
       );
       break;
     default:
-      rowRightTop = <ThemedText type="smallBold">{row.score_total.toLocaleString()}</ThemedText>;
+      rowRightTop = <ThemedText type="smallBold">{fmt(row.score_total)}</ThemedText>;
       rowRightBottom = (
         <ThemedText type="small" themeColor="textSecondary">
           {achievePct !== '—' ? `${achievePct}%` : '—'}
-          {row.total_notes > 0 ? ` / ${row.total_notes}` : ''}
+          {row.total_notes != null && row.total_notes > 0 ? ` / ${row.total_notes}` : ''}
         </ThemedText>
       );
       break;
