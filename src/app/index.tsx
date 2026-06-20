@@ -20,14 +20,14 @@ import { ThemedView } from '@/components/themed-view';
 import {
   DIFFICULTY_KEYS,
   DifficultyFilter,
-  toCourses,
+  toLevels,
   type DifficultyKey,
 } from '@/components/ui/DifficultyFilter';
 import {
   ClassImages,
   ClassLabels,
-  CourseColors,
-  CourseLabels,
+  LevelColors,
+  LevelLabels,
   CrownColors,
   CrownImages,
   GenreColorsDark,
@@ -36,13 +36,13 @@ import { Spacing } from '@/constants/theme';
 import { buildRecordQuery, listPlayers } from '@/db';
 import type { RecordFilter, RecordSort, RecordSortKey } from '@/db/records';
 import { useTheme } from '@/hooks/use-theme';
-import { SELF_TAIKO_NO, type Class, type Course, type Crown, type Genre, type Player } from '@/types';
+import { SELF_TAIKO_NO, type Class, type Level, type Crown, type Genre, type Player } from '@/types';
 
 /** buildRecordQuery が返す一覧行（computed cols 込み） */
 interface RecordListRow {
   song_number: number;
   song_title: string | null;
-  course: Course;
+  level: Level;
   crown: Crown;
   class: Class;
   score_total: number;
@@ -133,7 +133,7 @@ export default function RecordsScreen() {
   const [sortDesc, setSortDesc] = useState(true);
 
   // ---- 詳細モーダル ----
-  const [selectedRecord, setSelectedRecord] = useState<{ song_number: number; course: Course } | null>(null);
+  const [selectedRecord, setSelectedRecord] = useState<{ song_number: number; level: Level } | null>(null);
 
   // ---- ★10 tier 表出力 ----
   const [showTierExport, setShowTierExport] = useState(false);
@@ -144,13 +144,13 @@ export default function RecordsScreen() {
     );
     setGenres(genreRows);
 
-    const courses = toCourses(selectedDifficulties);
-    const isAllCourses = courses.length >= 5;
+    const levels = toLevels(selectedDifficulties);
+    const isAllLevels = levels.length >= 5;
 
     const filter: RecordFilter = {
       taikoNo: selectedTaikoNo,
       titleQuery: titleQuery.trim() || undefined,
-      courses: isAllCourses ? undefined : courses,
+      levels: isAllLevels ? undefined : levels,
       crowns: selectedCrowns.length > 0 ? selectedCrowns : undefined,
       classes: selectedClasses.length > 0 ? selectedClasses : undefined,
       genreId: selectedGenreId,
@@ -378,7 +378,7 @@ export default function RecordsScreen() {
         {/* 記録一覧 */}
         <FlatList
           data={rows}
-          keyExtractor={(r) => `${r.song_number}-${r.course}`}
+          keyExtractor={(r) => `${r.song_number}-${r.level}`}
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={
             <ThemedText type="small" themeColor="textSecondary" style={styles.empty}>
@@ -388,7 +388,7 @@ export default function RecordsScreen() {
             </ThemedText>
           }
           renderItem={({ item }) => (
-            <Row row={item} sortKey={sortKey} onPress={() => setSelectedRecord({ song_number: item.song_number, course: item.course })} />
+            <Row row={item} sortKey={sortKey} onPress={() => setSelectedRecord({ song_number: item.song_number, level: item.level })} />
           )}
         />
       </SafeAreaView>
@@ -396,7 +396,7 @@ export default function RecordsScreen() {
       {selectedRecord && (
         <RecordDetailModal
           songNumber={selectedRecord.song_number}
-          course={selectedRecord.course}
+          level={selectedRecord.level}
           taikoNo={selectedTaikoNo}
           onClose={() => setSelectedRecord(null)}
         />
@@ -517,14 +517,14 @@ function Row({
         )}
 
         {/* 難易度色バー */}
-        <View style={[styles.coursebar, { backgroundColor: CourseColors[row.course] }]} />
+        <View style={[styles.coursebar, { backgroundColor: LevelColors[row.level] }]} />
 
         <View style={styles.rowMain}>
           <ThemedText type="smallBold" numberOfLines={1}>
             {row.song_title ?? `#${row.song_number}`}
           </ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
-            {CourseLabels[row.course]}
+            {LevelLabels[row.level]}
             {row.star != null ? ` ★${row.star}` : ''}
             {row.tier ? ` / ${row.tier}` : ''}
           </ThemedText>

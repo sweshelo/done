@@ -1,12 +1,12 @@
 import type { ImageSourcePropType } from 'react-native';
 
-import type { Class, Course, Crown } from '@/types';
+import type { Class, Level, Crown } from '@/types';
 
 /**
  * 太鼓固有のカラースキーム。
  *
  * - 状態色 (Crown) は SPEC.md 指定値。* 付きは光るハイライト演出が望ましい。
- * - 難易度 (Course) / ジャンル背景色は wikiwiki.jp の表に揃える方針だが、
+ * - 難易度 (Level) / ジャンル背景色は wikiwiki.jp の表に揃える方針だが、
  *   wikiwiki はエージェントから取得不可のためユーザー提供待ち（暫定値）。→ DESIGN.md §8.2
  */
 
@@ -26,10 +26,10 @@ export const GLOWING_CROWNS: Crown[] = ['CLEAR', 'FULL_COMBO', 'DONDAFUL_COMBO']
 export const DONDAFUL_GRADIENT = ['#ff5f6d', '#ffc371', '#f3f34c', '#5cff6b', '#5ce1ff', '#f170ff'];
 
 /**
- * 難易度（Course）背景色。暫定。wikiwiki 確定後に転記する。
+ * 難易度（Level）背景色。暫定。wikiwiki 確定後に転記する。
  * 太鼓の一般的な難易度カラーを暫定採用。
  */
-export const CourseColors: Record<Course, string> = {
+export const LevelColors: Record<Level, string> = {
   EASY: '#f02814', // かんたん（暫定）
   NORMAL: '#e7a900', // ふつう（暫定）
   DIFFICULT: '#28a818', // むずかしい（暫定）
@@ -38,7 +38,7 @@ export const CourseColors: Record<Course, string> = {
 };
 
 /** 難易度ラベル（日本語） */
-export const CourseLabels: Record<Course, string> = {
+export const LevelLabels: Record<Level, string> = {
   EASY: 'かんたん',
   NORMAL: 'ふつう',
   DIFFICULT: 'むずかしい',

@@ -14,19 +14,19 @@ import { ThemedView } from '@/components/themed-view';
 import {
   ClassImages,
   ClassLabels,
-  CourseColors,
-  CourseLabels,
+  LevelColors,
+  LevelLabels,
   CrownColors,
   CrownImages,
 } from '@/constants/taiko-colors';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import type { Class, Course, Crown } from '@/types';
+import type { Class, Level, Crown } from '@/types';
 
 interface DetailRow {
   id: number;
   song_title: string | null;
-  course: Course;
+  level: Level;
   crown: Crown;
   class: Class;
   score_total: number;
@@ -45,7 +45,7 @@ interface DetailRow {
 
 interface Props {
   songNumber: number;
-  course: Course;
+  level: Level;
   /** 閲覧プレイヤーの太鼓番（自分=''） */
   taikoNo: string;
   onClose: () => void;
@@ -56,14 +56,14 @@ function formatDate(updatedAt: number): string {
   return new Date(updatedAt).toLocaleDateString('ja-JP');
 }
 
-export function RecordDetailModal({ songNumber, course, taikoNo, onClose }: Props) {
+export function RecordDetailModal({ songNumber, level, taikoNo, onClose }: Props) {
   const db = useSQLiteContext();
   const theme = useTheme();
   const [history, setHistory] = useState<DetailRow[]>([]);
 
   useEffect(() => {
     db.getAllAsync<DetailRow>(
-      `SELECT r.id, s.title AS song_title, r.course, r.crown, r.class,
+      `SELECT r.id, s.title AS song_title, r.level, r.crown, r.class,
               r.score_total, r.good, r.ok, r.ng, r.combo, r.pound, r.updated_at,
               lv.star, lv.tier,
               (r.good + r.ok + r.ng) AS total_notes,
@@ -73,14 +73,14 @@ export function RecordDetailModal({ songNumber, course, taikoNo, onClose }: Prop
               (r.score_total - r.pound * 100) AS base_score
        FROM records r
        JOIN songs s ON s.number = r.song_number
-       LEFT JOIN levels lv ON lv.song_number = r.song_number AND lv.course = r.course
-       WHERE r.taiko_no = ? AND r.song_number = ? AND r.course = ?
+       LEFT JOIN charts lv ON lv.song_number = r.song_number AND lv.level = r.level
+       WHERE r.taiko_no = ? AND r.song_number = ? AND r.level = ?
        ORDER BY r.updated_at ASC`,
       taikoNo,
       songNumber,
-      course,
+      level,
     ).then(setHistory);
-  }, [db, taikoNo, songNumber, course]);
+  }, [db, taikoNo, songNumber, level]);
 
   if (history.length === 0) return null;
 
@@ -95,13 +95,13 @@ export function RecordDetailModal({ songNumber, course, taikoNo, onClose }: Prop
       <ThemedView type="backgroundElement" style={styles.sheet}>
         {/* ヘッダー */}
         <View style={styles.header}>
-          <View style={[styles.courseBar, { backgroundColor: CourseColors[latest.course] }]} />
+          <View style={[styles.courseBar, { backgroundColor: LevelColors[latest.level] }]} />
           <View style={styles.headerText}>
             <ThemedText type="smallBold" numberOfLines={1}>
               {latest.song_title ?? `#${songNumber}`}
             </ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
-              {CourseLabels[latest.course]}
+              {LevelLabels[latest.level]}
               {latest.star != null ? ` ★${latest.star}` : ''}
               {latest.tier ? ` / ${latest.tier}` : ''}
             </ThemedText>

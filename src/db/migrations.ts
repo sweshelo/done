@@ -4,7 +4,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
  * スキーマバージョン。DDL を追加するたびに +1 し、MIGRATIONS に差分を追記する。
  * SQLiteProvider の onInit から runMigrations を呼ぶ。
  */
-export const DATABASE_VERSION = 4;
+export const DATABASE_VERSION = 5;
 
 /** バージョン v に上げるための DDL。index = 適用後のバージョン番号。 */
 const MIGRATIONS: Record<number, string> = {
@@ -99,6 +99,19 @@ const MIGRATIONS: Record<number, string> = {
       key   TEXT PRIMARY KEY,
       value TEXT
     );
+  `,
+
+  5: /* sql */ `
+    -- ドメインの「難易度」を Course→Level に改名したことに伴うスキーマ追従。
+    -- 譜面詳細テーブル levels→charts、難易度列 course→level に改名する。
+    -- RENAME COLUMN は PK・索引内の参照を自動更新する（SQLite >= 3.25）。
+    ALTER TABLE levels RENAME TO charts;
+    ALTER TABLE charts  RENAME COLUMN course TO level;
+    ALTER TABLE records RENAME COLUMN course TO level;
+
+    DROP INDEX IF EXISTS idx_records_user_song_course;
+    CREATE INDEX IF NOT EXISTS idx_records_user_song_level
+      ON records (taiko_no, song_number, level, updated_at DESC);
   `,
 };
 

@@ -1,4 +1,4 @@
-import type { Course, Record as DoneRecord } from '../types';
+import type { Level, Record as DoneRecord } from '../types';
 
 /** Phase 2 の取得対象（リトライにも使う） */
 export interface Target {
@@ -14,7 +14,7 @@ export interface CatalogSongPayload {
   internalId?: string;
   title?: string;
   genreIds: string[];
-  courses: Course[];
+  levels: Level[];
 }
 
 /** 最近プレイ履歴の1件（song_no は取得できないため曲名+難易度のみ） */

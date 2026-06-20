@@ -1,13 +1,13 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import { SELF_TAIKO_NO, type Class, type Course, type Crown, type Record as DoneRecord } from '@/types';
+import { SELF_TAIKO_NO, type Class, type Level, type Crown, type Record as DoneRecord } from '@/types';
 import type { Target } from '@/scrape/messages';
 
 /** DB の records 行（snake_case） */
 interface RecordRow {
   id: number;
   song_number: number;
-  course: Course;
+  level: Level;
   crown: Crown;
   class: Class;
   score_total: number;
@@ -29,7 +29,7 @@ interface RecordRow {
 export function rowToRecord(row: RecordRow): DoneRecord {
   return {
     songNumber: row.song_number,
-    course: row.course,
+    level: row.level,
     crown: row.crown,
     class: row.class,
     score: {
@@ -84,14 +84,14 @@ async function latestRecord(
   db: SQLiteDatabase,
   taikoNo: string,
   songNumber: number,
-  course: Course,
+  level: Level,
 ): Promise<RecordRow | null> {
   return db.getFirstAsync<RecordRow>(
-    `SELECT * FROM records WHERE taiko_no = ? AND song_number = ? AND course = ?
+    `SELECT * FROM records WHERE taiko_no = ? AND song_number = ? AND level = ?
      ORDER BY updated_at DESC, id DESC LIMIT 1`,
     taikoNo,
     songNumber,
-    course,
+    level,
   );
 }
 
@@ -105,17 +105,17 @@ export async function insertRecordIfChanged(
   record: DoneRecord,
   taikoNo: string = SELF_TAIKO_NO,
 ): Promise<boolean> {
-  const latest = await latestRecord(db, taikoNo, record.songNumber, record.course);
+  const latest = await latestRecord(db, taikoNo, record.songNumber, record.level);
   if (latest && !hasChanged(latest, record)) return false;
 
   await db.runAsync(
     `INSERT INTO records
-      (taiko_no, song_number, course, crown, class, score_total, good, ok, ng, combo, pound,
+      (taiko_no, song_number, level, crown, class, score_total, good, ok, ng, combo, pound,
        ranking, options, play, clear, fullcombo, dondafulcombo, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     taikoNo,
     record.songNumber,
-    record.course,
+    record.level,
     record.crown,
     record.class,
     record.score.total,
@@ -203,7 +203,7 @@ export interface RecordFilter {
   /** ジャンル絞り込み */
   genreId?: string;
   /** 難易度絞り込み（複数選択）。おに裏 (EXTRA) はおに (ONI) と同等に扱う呼び出し側で展開すること */
-  courses?: Course[];
+  levels?: Level[];
   /** クリア王冠絞り込み（複数選択） */
   crowns?: Crown[];
   /** 極マーク絞り込み（複数選択）。Class の全8種を個別指定可能 */
@@ -230,15 +230,15 @@ export interface RecordSort {
 }
 
 /**
- * 指定プレイヤー(taiko_no)の各 (song_number, course) の最新行のみ。
+ * 指定プレイヤー(taiko_no)の各 (song_number, level) の最新行のみ。
  * 内側集約と外側 r の両方を taiko_no で絞る（'?' は taiko_no を2回バインド）。
  */
 const LATEST_PER_CHART = /* sql */ `
   SELECT r.* FROM records r
   JOIN (
-    SELECT song_number, course, MAX(updated_at) AS mx
-    FROM records WHERE taiko_no = ? GROUP BY song_number, course
-  ) m ON m.song_number = r.song_number AND m.course = r.course AND m.mx = r.updated_at
+    SELECT song_number, level, MAX(updated_at) AS mx
+    FROM records WHERE taiko_no = ? GROUP BY song_number, level
+  ) m ON m.song_number = r.song_number AND m.level = r.level AND m.mx = r.updated_at
   WHERE r.taiko_no = ?
 `;
 
@@ -291,10 +291,10 @@ export function buildRecordQuery(
     where.push('s.title LIKE ?');
     params.push(`%${filter.titleQuery}%`);
   }
-  if (filter.courses && filter.courses.length > 0) {
-    const placeholders = filter.courses.map(() => '?').join(', ');
-    where.push(`r.course IN (${placeholders})`);
-    params.push(...filter.courses);
+  if (filter.levels && filter.levels.length > 0) {
+    const placeholders = filter.levels.map(() => '?').join(', ');
+    where.push(`r.level IN (${placeholders})`);
+    params.push(...filter.levels);
   }
   if (filter.crowns && filter.crowns.length > 0) {
     const placeholders = filter.crowns.map(() => '?').join(', ');
@@ -360,7 +360,7 @@ export function buildRecordQuery(
        WHERE gs_sub.song_number = r.song_number) AS genre_ids
     FROM (${LATEST_PER_CHART}) r
     JOIN songs s ON s.number = r.song_number
-    LEFT JOIN levels lv ON lv.song_number = r.song_number AND lv.course = r.course
+    LEFT JOIN charts lv ON lv.song_number = r.song_number AND lv.level = r.level
     ${filter.genreId ? 'JOIN genre_songs gs ON gs.song_number = r.song_number' : ''}
     ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
     ORDER BY ${orderClause}

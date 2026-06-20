@@ -129,14 +129,14 @@ export default function SettingsScreen() {
           <Pressable
             style={styles.dangerBtn}
             onPress={() =>
-              Alert.alert('全良難易度表を削除', 'levels テーブルの tier / tier_rank を全て NULL にします。', [
+              Alert.alert('全良難易度表を削除', 'charts テーブルの tier / tier_rank を全て NULL にします。', [
                 { text: 'キャンセル', style: 'cancel' },
                 {
                   text: '削除する',
                   style: 'destructive',
                   onPress: async () => {
                     try {
-                      await db.runAsync('UPDATE levels SET tier = NULL, tier_rank = NULL');
+                      await db.runAsync('UPDATE charts SET tier = NULL, tier_rank = NULL');
                       setMessage('tier データを削除しました。');
                     } catch (e) {
                       setMessage(`エラー: ${String(e)}`);
@@ -152,14 +152,14 @@ export default function SettingsScreen() {
           <Pressable
             style={styles.dangerBtn}
             onPress={() =>
-              Alert.alert('★データを削除', 'levels テーブルの star を全て NULL にします。', [
+              Alert.alert('★データを削除', 'charts テーブルの star を全て NULL にします。', [
                 { text: 'キャンセル', style: 'cancel' },
                 {
                   text: '削除する',
                   style: 'destructive',
                   onPress: async () => {
                     try {
-                      await db.runAsync('UPDATE levels SET star = NULL');
+                      await db.runAsync('UPDATE charts SET star = NULL');
                       setMessage('★データを削除しました。');
                     } catch (e) {
                       setMessage(`エラー: ${String(e)}`);

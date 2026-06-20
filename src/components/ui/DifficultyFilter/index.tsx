@@ -4,12 +4,12 @@
  * 「おに」を選択すると ONI と EXTRA(おに裏) の両方が対象になる。
  *
  * value: UI キー 'EASY' | 'NORMAL' | 'DIFFICULT' | 'ONI'
- * toCourses(value): 実際の Course[] に展開するヘルパも export する。
+ * toLevels(value): 実際の Level[] に展開するヘルパも export する。
  */
 import { StyleSheet, View } from 'react-native';
 
-import { CourseColors, CourseLabels } from '@/constants/taiko-colors';
-import type { Course } from '@/types';
+import { LevelColors, LevelLabels } from '@/constants/taiko-colors';
+import type { Level } from '@/types';
 
 import { LevelCheckBox } from '../LevelCheckBox';
 
@@ -18,9 +18,9 @@ export type DifficultyKey = 'EASY' | 'NORMAL' | 'DIFFICULT' | 'ONI';
 
 export const DIFFICULTY_KEYS: DifficultyKey[] = ['EASY', 'NORMAL', 'DIFFICULT', 'ONI'];
 
-/** UI キー → 実 Course[] へ展開（おに = ONI + EXTRA） */
-export function toCourses(keys: DifficultyKey[]): Course[] {
-  const set = new Set<Course>();
+/** UI キー → 実 Level[] へ展開（おに = ONI + EXTRA） */
+export function toLevels(keys: DifficultyKey[]): Level[] {
+  const set = new Set<Level>();
   for (const k of keys) {
     if (k === 'ONI') {
       set.add('ONI');
@@ -32,10 +32,10 @@ export function toCourses(keys: DifficultyKey[]): Course[] {
   return [...set];
 }
 
-/** Course[] → UI キーに逆変換（EXTRA は ONI 扱い） */
-export function toKeys(courses: Course[]): DifficultyKey[] {
+/** Level[] → UI キーに逆変換（EXTRA は ONI 扱い） */
+export function toKeys(levels: Level[]): DifficultyKey[] {
   const set = new Set<DifficultyKey>();
-  for (const c of courses) {
+  for (const c of levels) {
     if (c === 'EXTRA') set.add('ONI');
     else set.add(c as DifficultyKey);
   }
@@ -48,17 +48,17 @@ interface DifficultyFilterProps {
 }
 
 const UI_LABELS: Record<DifficultyKey, string> = {
-  EASY: CourseLabels.EASY,
-  NORMAL: CourseLabels.NORMAL,
-  DIFFICULT: CourseLabels.DIFFICULT,
-  ONI: `${CourseLabels.ONI}(裏含)`,
+  EASY: LevelLabels.EASY,
+  NORMAL: LevelLabels.NORMAL,
+  DIFFICULT: LevelLabels.DIFFICULT,
+  ONI: `${LevelLabels.ONI}(裏含)`,
 };
 
 const UI_COLORS: Record<DifficultyKey, string> = {
-  EASY: CourseColors.EASY,
-  NORMAL: CourseColors.NORMAL,
-  DIFFICULT: CourseColors.DIFFICULT,
-  ONI: CourseColors.ONI,
+  EASY: LevelColors.EASY,
+  NORMAL: LevelColors.NORMAL,
+  DIFFICULT: LevelColors.DIFFICULT,
+  ONI: LevelColors.ONI,
 };
 
 export function DifficultyFilter({ selected, onChange }: DifficultyFilterProps) {

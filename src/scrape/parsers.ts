@@ -1,7 +1,7 @@
-import type { Class, Course, Crown, Record as DoneRecord } from '../types';
+import type { Class, Level, Crown, Record as DoneRecord } from '../types';
 import type { RawDetailRecord } from './raw-types';
 
-const DIFFICULTY_MAP: { [key: string]: Course } = {
+const DIFFICULTY_MAP: { [key: string]: Level } = {
   '1': 'EASY',
   '2': 'NORMAL',
   '3': 'DIFFICULT',
@@ -9,7 +9,7 @@ const DIFFICULTY_MAP: { [key: string]: Course } = {
   '5': 'EXTRA',
 };
 
-export function parseDifficulty(level: string | number): Course {
+export function parseDifficulty(level: string | number): Level {
   return DIFFICULTY_MAP[String(level)] ?? 'ONI';
 }
 
@@ -57,7 +57,7 @@ export function toRecord(raw: RawDetailRecord): DoneRecord {
 
   return {
     songNumber: parseInt(raw.id, 10),
-    course: parseDifficulty(raw.difficulty),
+    level: parseDifficulty(raw.difficulty),
     crown: parseCrown(raw.crownSrc),
     class: parseClass(raw.classSrc),
     score: {

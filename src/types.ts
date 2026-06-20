@@ -16,7 +16,7 @@ export type Class =
   | 'PURPLE_MIYABI'
   | 'KIWAMI';
 
-export type Course = 'EASY' | 'NORMAL' | 'DIFFICULT' | 'ONI' | 'EXTRA';
+export type Level = 'EASY' | 'NORMAL' | 'DIFFICULT' | 'ONI' | 'EXTRA';
 
 export type Option = string;
 
@@ -37,7 +37,7 @@ export interface History {
 /** プレイの記録（ある時点のスナップショット） */
 export interface Record {
   songNumber: number;
-  course: Course;
+  level: Level;
   crown: Crown;
   class: Class;
   score: {
@@ -56,8 +56,8 @@ export interface Record {
 }
 
 /** 譜面データ（難易度ごと） */
-export interface Level {
-  course: Course;
+export interface Chart {
+  level: Level;
   /** ☆の数。wikiwiki / taiko.wiki 由来。未取得は undefined */
   star?: number;
   /** 譜面ページへのリンク */
@@ -72,7 +72,7 @@ export interface Song {
   id?: string; // 楽曲識別の内部値。スクレイピングでは取得できない場合がある
   /** 表示用の曲名（SPEC 拡張: 記録閲覧での表示に必須） */
   title?: string;
-  level: Level[];
+  charts: Chart[];
 }
 
 export interface Genre {
@@ -81,7 +81,7 @@ export interface Genre {
   songs: Song['number'][];
 }
 
-export const COURSES: Course[] = ['EASY', 'NORMAL', 'DIFFICULT', 'ONI', 'EXTRA'];
+export const LEVELS: Level[] = ['EASY', 'NORMAL', 'DIFFICULT', 'ONI', 'EXTRA'];
 
 /**
  * プレイヤー（自分 / ライバル）。taikoNo はドンだーひろばのユーザーID（太鼓番）。

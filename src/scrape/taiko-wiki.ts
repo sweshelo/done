@@ -9,7 +9,7 @@
  */
 import { parse } from 'node-html-parser';
 
-import type { Course } from '../types';
+import type { Level } from '../types';
 import { withConcurrency } from './concurrency';
 
 /** taiko.wiki の1曲分の★データ。songNo は donderhiroba の song_no と同じ整数。 */
@@ -63,16 +63,16 @@ export async function fetchSongStar(songNo: number): Promise<SongStar | null> {
 // 全良難易度表 (tier)
 // ────────────────────────────────────────────────────────────────────────────
 
-/** 全良難易度表から得られる1エントリ。songNo と course の組み合わせで levels 行を特定する。 */
+/** 全良難易度表から得られる1エントリ。songNo と level の組み合わせで charts 行を特定する。 */
 export interface SongTier {
   songNo: number;
-  course: Course;
+  level: Level;
   tier: string;
   /** ページ上の tier 出現順（0 = 最上位）。ソートに使用。 */
   tierRank: number;
 }
 
-const DIFF_TO_COURSE: Record<string, Course> = {
+const DIFF_TO_LEVEL: Record<string, Level> = {
   oni: 'ONI',
   ura: 'EXTRA',
 };
@@ -115,9 +115,9 @@ export async function fetchTierChart(starLevel = 10): Promise<SongTier[]> {
       const songNo = parseInt(songMatch[1], 10);
 
       const diffMatch = href.match(/[?&]diff=(\w+)/);
-      const course: Course = DIFF_TO_COURSE[diffMatch?.[1] ?? ''] ?? 'ONI';
+      const level: Level = DIFF_TO_LEVEL[diffMatch?.[1] ?? ''] ?? 'ONI';
 
-      results.push({ songNo, course, tier, tierRank });
+      results.push({ songNo, level, tier, tierRank });
     }
   }
 

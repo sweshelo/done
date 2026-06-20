@@ -9,7 +9,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { TierTableView, type TierTableRow } from '@/components/TierTableView';
 import { Spacing } from '@/constants/theme';
-import type { Course, Crown } from '@/types';
+import type { Level, Crown } from '@/types';
 
 const CELLS_PER_ROW = 10;
 const CELL_GAP = 2;
@@ -17,7 +17,7 @@ const CELL_GAP = 2;
 interface DbRow {
   song_number: number;
   song_title: string;
-  course: Course;
+  level: Level;
   tier: string;
   tier_rank: number;
   crown: Crown | null;
@@ -59,19 +59,19 @@ export function TierExportModal({ taikoNo, onClose }: Props) {
   useEffect(() => {
     db.getAllAsync<DbRow>(
       `SELECT s.number AS song_number, s.title AS song_title,
-              lv.course, lv.tier, lv.tier_rank,
+              lv.level, lv.tier, lv.tier_rank,
               latest.crown
-       FROM levels lv
+       FROM charts lv
        JOIN songs s ON s.number = lv.song_number
        LEFT JOIN (
-         SELECT r.song_number, r.course, r.crown
+         SELECT r.song_number, r.level, r.crown
          FROM records r
          INNER JOIN (
-           SELECT song_number, course, MAX(updated_at) AS mx
-           FROM records WHERE taiko_no = ? GROUP BY song_number, course
-         ) m ON m.song_number = r.song_number AND m.course = r.course AND m.mx = r.updated_at
+           SELECT song_number, level, MAX(updated_at) AS mx
+           FROM records WHERE taiko_no = ? GROUP BY song_number, level
+         ) m ON m.song_number = r.song_number AND m.level = r.level AND m.mx = r.updated_at
          WHERE r.taiko_no = ?
-       ) latest ON latest.song_number = lv.song_number AND latest.course = lv.course
+       ) latest ON latest.song_number = lv.song_number AND latest.level = lv.level
        WHERE lv.star = 10 AND lv.tier IS NOT NULL
        ORDER BY lv.tier_rank ASC, lv.song_number ASC`,
       taikoNo,
@@ -81,7 +81,7 @@ export function TierExportModal({ taikoNo, onClose }: Props) {
         dbRows.map((r) => ({
           song_number: r.song_number,
           song_title: r.song_title,
-          course: r.course,
+          level: r.level,
           crown: r.crown,
           tier: r.tier,
           tier_rank: r.tier_rank,

@@ -9,7 +9,7 @@ import { ThemedView } from '@/components/themed-view';
 import {
   DIFFICULTY_KEYS,
   DifficultyFilter,
-  toCourses,
+  toLevels,
   type DifficultyKey,
 } from '@/components/ui/DifficultyFilter';
 import { Spacing } from '@/constants/theme';
@@ -29,7 +29,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { genreTitle } from '@/scrape/genres';
 import { INJECT_SCRIPT } from '@/scrape/inject-script';
 import type { ScrapeMessage, Target } from '@/scrape/messages';
-import { SELF_TAIKO_NO, type Course, type Player } from '@/types';
+import { SELF_TAIKO_NO, type Level, type Player } from '@/types';
 
 // UA は固定しない。強制デスクトップ UA は donderhiroba の PC ログインフローを誘発し、
 // モバイルでのカード選択完了が /login.php に誤誘導される原因になる（DESIGN.md §5.2）。
@@ -43,7 +43,7 @@ interface DoneConfig {
   retryTargets?: Target[];
   concurrency?: number;
   /** 取得対象難易度。未指定(undefined)の場合は全難易度を取得する。 */
-  difficulties?: Course[];
+  difficulties?: Level[];
   /** 取得対象ユーザーの太鼓番。空/未指定=自分。 */
   taikoNo?: string;
   /** 最近プレイ履歴から取得する曲数。 */
@@ -276,7 +276,7 @@ export default function CollectScreen() {
       setStatus('初回初期化のため全難易度を取得します');
       inject({ taikoNo });
     } else {
-      const difficulties = toCourses(selectedDifficulties);
+      const difficulties = toLevels(selectedDifficulties);
       const isAll = difficulties.length >= 5;
       inject(isAll ? { taikoNo } : { difficulties, taikoNo });
     }

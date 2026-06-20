@@ -6,7 +6,7 @@ export {
   saveTierData,
   upsertGenre,
   upsertSong,
-  upsertLevel,
+  upsertChart,
   linkGenreSong,
   type SongCatalogItem,
 } from './songs';

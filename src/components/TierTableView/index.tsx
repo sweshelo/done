@@ -2,14 +2,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { forwardRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { CourseColors, DONDAFUL_GRADIENT } from '@/constants/taiko-colors';
+import { LevelColors, DONDAFUL_GRADIENT } from '@/constants/taiko-colors';
 import { Spacing } from '@/constants/theme';
-import type { Course, Crown } from '@/types';
+import type { Level, Crown } from '@/types';
 
 export interface TierTableRow {
   song_number: number;
   song_title: string;
-  course: Course;
+  level: Level;
   crown: Crown | null;
   tier: string;
   tier_rank: number;
@@ -57,7 +57,7 @@ export const TierTableView = forwardRef<View, Props>(({ rows, cellWidth, tableWi
           </View>
           <View style={styles.cellGrid}>
             {items.map((row) => (
-              <SongCell key={`${row.song_number}-${row.course}`} row={row} width={cellWidth} />
+              <SongCell key={`${row.song_number}-${row.level}`} row={row} width={cellWidth} />
             ))}
           </View>
         </View>
@@ -69,7 +69,7 @@ export const TierTableView = forwardRef<View, Props>(({ rows, cellWidth, tableWi
 TierTableView.displayName = 'TierTableView';
 
 function SongCell({ row, width }: { row: TierTableRow; width: number }) {
-  const textColor = CourseColors[row.course];
+  const textColor = LevelColors[row.level];
   // 横長長方形（width > height）
   const cellStyle = {
     width,
