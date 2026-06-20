@@ -6,8 +6,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import {
+  DifficultyFilter,
+  toKeys,
+  toLevels,
+  type DifficultyKey,
+} from '@/components/ui/DifficultyFilter';
 import { Spacing } from '@/constants/theme';
 import {
+  ALMOST_LEVELS_KEY,
   ALMOST_MODE_KEY,
   ALMOST_VALUE_KEY,
   exportDatabase,
@@ -37,12 +44,14 @@ export default function SettingsScreen() {
   // 「もうすぐFC/DC」スマートフォルダの判定閾値
   const [almostMode, setAlmostMode] = useState<AlmostMode>('absolute');
   const [almostValue, setAlmostValue] = useState('3');
+  const [almostLevels, setAlmostLevels] = useState<DifficultyKey[]>(['EASY', 'NORMAL', 'DIFFICULT', 'ONI']);
   const [almostMessage, setAlmostMessage] = useState<string | null>(null);
 
   useEffect(() => {
     getAlmostConfig(db).then((cfg) => {
       setAlmostMode(cfg.mode);
       setAlmostValue(String(cfg.value));
+      setAlmostLevels(toKeys(cfg.levels));
     });
   }, [db]);
 
@@ -52,8 +61,13 @@ export default function SettingsScreen() {
       setAlmostMessage('1以上の数値を入力してください。');
       return;
     }
+    if (almostLevels.length === 0) {
+      setAlmostMessage('対象難易度を1つ以上選択してください。');
+      return;
+    }
     await setMeta(db, ALMOST_MODE_KEY, almostMode);
     await setMeta(db, ALMOST_VALUE_KEY, String(num));
+    await setMeta(db, ALMOST_LEVELS_KEY, toLevels(almostLevels).join(','));
     setAlmostMessage('保存しました。');
   };
 
@@ -217,7 +231,7 @@ export default function SettingsScreen() {
           <ThemedText type="smallBold">もうすぐFC / DC の判定</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
             フォルダタブの「もうすぐフルコンボ」「もうすぐドンだフルコンボ」に表示する条件です。
-            FCは不可(ng)、DCは可(ok)の残り数がこの閾値以下の曲を集めます。
+            FCは不可、DCは可の残り数がこの閾値以下の曲を集めます。
           </ThemedText>
           <View style={styles.almostRow}>
             <Pressable
@@ -253,6 +267,10 @@ export default function SettingsScreen() {
               {almostMode === 'percent' ? '% 以下' : '個以下'}
             </ThemedText>
           </View>
+          <ThemedText type="small" themeColor="textSecondary">
+            対象難易度
+          </ThemedText>
+          <DifficultyFilter selected={almostLevels} onChange={setAlmostLevels} />
           <Pressable
             style={[styles.btn, { backgroundColor: theme.backgroundSelected }]}
             onPress={saveAlmost}>

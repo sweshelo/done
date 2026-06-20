@@ -47,6 +47,25 @@ export const LevelLabels: Record<Level, string> = {
 };
 
 /**
+ * 難易度アイコン画像マッパー。
+ * 1.png=かんたん(EASY), 2.png=ふつう(NORMAL), 3.png=むずかしい(DIFFICULT),
+ * 4.png=おに(ONI), 5.png=裏(EXTRA)。
+ * 注: assets/images/level/*.png は難易度アイコン専用。極スコアマークは ClassImages（class/*.png）を使う。
+ */
+export const LevelImages: Record<Level, ImageSourcePropType> = {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  EASY: require('../../assets/images/level/1.png') as ImageSourcePropType,
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  NORMAL: require('../../assets/images/level/2.png') as ImageSourcePropType,
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  DIFFICULT: require('../../assets/images/level/3.png') as ImageSourcePropType,
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  ONI: require('../../assets/images/level/4.png') as ImageSourcePropType,
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  EXTRA: require('../../assets/images/level/5.png') as ImageSourcePropType,
+};
+
+/**
  * ジャンル基準色 (wikiwiki.jp の th 背景色より)。
  * genreId (1..8) → 色。
  */

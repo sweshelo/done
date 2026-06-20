@@ -13,31 +13,44 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AddSongsModal } from '@/components/folders/AddSongsModal';
+import { FavoriteSyncModal } from '@/components/folders/FavoriteSyncModal';
 import { RecordDetailModal } from '@/components/RecordDetailModal';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import {
+  EMPTY_SONG_SEARCH,
+  SongSearchBar,
+  type SongSearchState,
+} from '@/components/ui/SongSearchBar';
+import {
+  ClassImages,
   CrownColors,
   CrownImages,
   GenreColors,
   LevelColors,
-  LevelLabels
+  LevelImages,
+  LevelLabels,
 } from '@/constants/taiko-colors';
 import { Spacing } from '@/constants/theme';
 import {
   createFolder,
   deleteFolder,
+  getFolderSongDetails,
+  getFolderSongNumbers,
   getFolderSongs,
   listManualFolders,
   renameFolder,
 } from '@/db';
-import type { FolderRef, FolderSongRow, ManualFolderRow } from '@/db/folders';
+import type { FolderRef, FolderSongDetail, FolderSongRow, ManualFolderRow } from '@/db/folders';
 import { useTheme } from '@/hooks/use-theme';
-import { SELF_TAIKO_NO } from '@/types';
+import { SELF_TAIKO_NO, type Level } from '@/types';
 
 const GENRE_FALLBACK_COLOR = '#212225';
 const ALMOST_FC_NAME = 'もうすぐフルコンボ';
 const ALMOST_DC_NAME = 'もうすぐドンだフルコンボ';
+/** ドンだーひろばのお気に入りの曲の上限（song_no_1 .. song_no_30）。 */
+const FAVORITE_LIMIT = 30;
 
 export default function FoldersScreen() {
   const db = useSQLiteContext();
@@ -260,27 +273,87 @@ export default function FoldersScreen() {
 function FolderDetailModal({ folder, onClose }: { folder: FolderRef; onClose: () => void }) {
   const db = useSQLiteContext();
   const theme = useTheme();
+  const isAlmost = folder.kind === 'almostFc' || folder.kind === 'almostDc';
+
+  // almost: 単一 level 行（FolderSongRow）／genre・manual: 難易度別（FolderSongDetail）
   const [songs, setSongs] = useState<FolderSongRow[]>([]);
+  const [details, setDetails] = useState<FolderSongDetail[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState<{ song_number: number; level: FolderSongRow['level'] } | null>(null);
+  const [search, setSearch] = useState<SongSearchState>(EMPTY_SONG_SEARCH);
+  const [showAdd, setShowAdd] = useState(false);
+  const [selected, setSelected] = useState<{ song_number: number; level: Level } | null>(null);
+  // お気に入り反映の対象 song_no（≤30 に整形済み）。null の間はモーダル非表示。
+  const [favoriteNos, setFavoriteNos] = useState<number[] | null>(null);
+
+  // フォルダ内容をドンだーひろばのお気に入りへ反映する。30超は警告後に先頭30曲のみ。
+  const onReflectFavorite = useCallback(async () => {
+    const nos = await getFolderSongNumbers(db, folder);
+    if (nos.length === 0) {
+      Alert.alert('お気に入りに反映', 'このフォルダには曲がありません。');
+      return;
+    }
+    if (nos.length > FAVORITE_LIMIT) {
+      Alert.alert(
+        'お気に入りに反映',
+        `${nos.length}曲あります。お気に入りは最大${FAVORITE_LIMIT}曲のため、フォルダの先頭${FAVORITE_LIMIT}曲のみ登録します。`,
+        [
+          { text: 'キャンセル', style: 'cancel' },
+          { text: '続ける', onPress: () => setFavoriteNos(nos.slice(0, FAVORITE_LIMIT)) },
+        ],
+      );
+      return;
+    }
+    setFavoriteNos(nos);
+  }, [db, folder]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    if (isAlmost) {
+      const rows = await getFolderSongs(db, folder);
+      setSongs(rows);
+    } else {
+      const rows = await getFolderSongDetails(db, folder);
+      setDetails(rows);
+    }
+    setLoading(false);
+  }, [db, folder, isAlmost]);
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
-      setLoading(true);
-      getFolderSongs(db, folder).then((rows) => {
-        if (!active) return;
-        setSongs(rows);
-        setLoading(false);
+      void load().catch(() => {
+        if (active) setLoading(false);
       });
       return () => {
         active = false;
       };
-    }, [db, folder]),
+    }, [load]),
   );
 
-  const isAlmost = folder.kind === 'almostFc' || folder.kind === 'almostDc';
   const remainingLabel = folder.kind === 'almostFc' ? '不可' : '可';
+
+  // クライアント側の絞り込み・並べ替え（genre/manual のみスコア対象）。
+  const q = search.titleQuery.trim().toLowerCase();
+  const filteredDetails = (() => {
+    let list = details;
+    if (q) list = list.filter((d) => (d.title ?? '').toLowerCase().includes(q));
+    if (search.minScore != null)
+      list = list.filter((d) => d.maxScore != null && d.maxScore >= search.minScore!);
+    if (search.scoreSort !== 'none') {
+      const dir = search.scoreSort === 'asc' ? 1 : -1;
+      list = [...list].sort((a, b) => {
+        if (a.maxScore == null && b.maxScore == null) return 0;
+        if (a.maxScore == null) return 1; // 未記録は末尾
+        if (b.maxScore == null) return -1;
+        return (a.maxScore - b.maxScore) * dir;
+      });
+    }
+    return list;
+  })();
+  const filteredSongs = q
+    ? songs.filter((s) => (s.title ?? '').toLowerCase().includes(q))
+    : songs;
+  const visibleCount = isAlmost ? filteredSongs.length : filteredDetails.length;
 
   return (
     <Modal transparent animationType="slide" onRequestClose={onClose}>
@@ -291,67 +364,158 @@ function FolderDetailModal({ folder, onClose }: { folder: FolderRef; onClose: ()
             {folder.name}
           </ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
-            {songs.length} 曲
+            {visibleCount} 曲
           </ThemedText>
+          {folder.kind === 'manual' && (
+            <Pressable
+              onPress={() => setShowAdd(true)}
+              style={[styles.addBtn, { backgroundColor: theme.backgroundSelected }]}>
+              <ThemedText type="smallBold">＋ 曲を追加</ThemedText>
+            </Pressable>
+          )}
+          <Pressable
+            onPress={onReflectFavorite}
+            style={[styles.addBtn, { backgroundColor: theme.backgroundSelected }]}>
+            <ThemedText type="smallBold">★ お気に入り</ThemedText>
+          </Pressable>
           <Pressable onPress={onClose} style={styles.closeBtn}>
             <ThemedText type="smallBold">✕</ThemedText>
           </Pressable>
         </View>
 
-        <FlatList
-          data={songs}
-          keyExtractor={(s, i) => `${s.song_number}-${s.level ?? ''}-${i}`}
-          contentContainerStyle={styles.songListContent}
-          ListEmptyComponent={
-            <ThemedText type="small" themeColor="textSecondary" style={styles.empty}>
-              {loading
-                ? '読み込み中…'
-                : isAlmost
-                  ? '条件に合う曲がありません。設定の閾値を確認してください。'
-                  : 'このフォルダにはまだ曲がありません。'}
-            </ThemedText>
-          }
-          renderItem={({ item }) => (
-            <Pressable
-              onPress={() => setSelected({ song_number: item.song_number, level: item.level })}
-            >
-              <View style={[styles.songRow, { borderColor: theme.text + '18' }]}>
-                {item.level && (
-                  <View style={[styles.courseBar, { backgroundColor: LevelColors[item.level] }]} />
-                )}
-                {item.crown && CrownImages[item.crown] && (
-                  <Image source={CrownImages[item.crown]} style={styles.songCrown} resizeMode="contain" />
-                )}
-                <View style={styles.songMain}>
-                  <ThemedText type="smallBold" numberOfLines={1}>
-                    {item.title ?? `#${item.song_number}`}
-                  </ThemedText>
+        <View style={styles.searchWrap}>
+          <SongSearchBar value={search} onChange={setSearch} />
+        </View>
+
+        {isAlmost ? (
+          <FlatList
+            data={filteredSongs}
+            keyExtractor={(s, i) => `${s.song_number}-${s.level ?? ''}-${i}`}
+            contentContainerStyle={styles.songListContent}
+            keyboardShouldPersistTaps="handled"
+            ListEmptyComponent={
+              <ThemedText type="small" themeColor="textSecondary" style={styles.empty}>
+                {loading ? '読み込み中…' : '条件に合う曲がありません。設定の閾値・対象難易度を確認してください。'}
+              </ThemedText>
+            }
+            renderItem={({ item }) => (
+              <Pressable onPress={() => item.level && setSelected({ song_number: item.song_number, level: item.level })}>
+                <View style={[styles.songRow, { borderColor: theme.text + '18' }]}>
                   {item.level && (
-                    <ThemedText type="small" themeColor="textSecondary">
-                      {LevelLabels[item.level]}
+                    <View style={[styles.courseBar, { backgroundColor: LevelColors[item.level] }]} />
+                  )}
+                  {item.crown && CrownImages[item.crown] && (
+                    <Image source={CrownImages[item.crown]} style={styles.songCrown} resizeMode="contain" />
+                  )}
+                  <View style={styles.songMain}>
+                    <ThemedText type="smallBold" numberOfLines={1}>
+                      {item.title ?? `#${item.song_number}`}
+                    </ThemedText>
+                    {item.level && (
+                      <ThemedText type="small" themeColor="textSecondary">
+                        {LevelLabels[item.level]}
+                      </ThemedText>
+                    )}
+                  </View>
+                  {item.remaining != null && (
+                    <ThemedText type="smallBold">
+                      残り{remainingLabel} {item.remaining}
                     </ThemedText>
                   )}
                 </View>
-                {isAlmost && item.remaining != null && (
-                  <ThemedText type="smallBold">
-                    残り{remainingLabel} {item.remaining}
-                  </ThemedText>
-                )}
+              </Pressable>
+            )}
+          />
+        ) : (
+          <FlatList
+            data={filteredDetails}
+            keyExtractor={(d) => String(d.song_number)}
+            contentContainerStyle={styles.songListContent}
+            keyboardShouldPersistTaps="handled"
+            ListEmptyComponent={
+              <ThemedText type="small" themeColor="textSecondary" style={styles.empty}>
+                {loading
+                  ? '読み込み中…'
+                  : details.length === 0
+                    ? 'このフォルダにはまだ曲がありません。'
+                    : '検索条件に一致する曲がありません。'}
+              </ThemedText>
+            }
+            renderItem={({ item }) => (
+              <View style={[styles.detailRow, { borderColor: theme.text + '18' }]}>
+                <ThemedText type="smallBold" numberOfLines={1}>
+                  {item.title ?? `#${item.song_number}`}
+                </ThemedText>
+                <View style={styles.levelBadgeRow}>
+                  {item.levels.map((lv) => (
+                    <LevelBadge
+                      key={lv.level}
+                      entry={lv}
+                      onPress={() => setSelected({ song_number: item.song_number, level: lv.level })}
+                    />
+                  ))}
+                </View>
               </View>
-            </Pressable>
-          )}
-        />
+            )}
+          />
+        )}
       </ThemedView>
+
+      {showAdd && folder.kind === 'manual' && (
+        <AddSongsModal
+          folderId={folder.id}
+          folderName={folder.name}
+          onClose={() => {
+            setShowAdd(false);
+            void load();
+          }}
+        />
+      )}
 
       {selected && (
         <RecordDetailModal
           songNumber={selected.song_number}
-          level={selected.level ?? 'ONI'}
+          level={selected.level}
           taikoNo={SELF_TAIKO_NO}
           onClose={() => setSelected(null)}
         />
       )}
+
+      {favoriteNos && (
+        <FavoriteSyncModal
+          songNumbers={favoriteNos}
+          folderName={folder.name}
+          onClose={() => setFavoriteNos(null)}
+        />
+      )}
     </Modal>
+  );
+}
+
+/** 難易度バッジ：難易度アイコン＋（記録があれば）王冠・極マークを併記。記録なしは淡色・無効。 */
+function LevelBadge({
+  entry,
+  onPress,
+}: {
+  entry: FolderSongDetail['levels'][number];
+  onPress: () => void;
+}) {
+  const { level, crown, class: cls, hasRecord } = entry;
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={!hasRecord}
+      style={[styles.levelBadge, !hasRecord && styles.levelBadgeDim]}>
+      <Image source={LevelImages[level]} style={styles.levelIcon} resizeMode="contain" />
+      <View style={styles.badgeMarks}>
+        {hasRecord && CrownImages[crown] && (
+          <Image source={CrownImages[crown]} style={styles.badgeCrown} resizeMode="contain" />
+        )}
+        {hasRecord && ClassImages[cls] && (
+          <Image source={ClassImages[cls]} style={styles.badgeClass} resizeMode="contain" />
+        )}
+      </View>
+    </Pressable>
   );
 }
 
@@ -433,6 +597,7 @@ const styles = StyleSheet.create({
   },
   sheetTitle: { flex: 1 },
   closeBtn: { paddingHorizontal: Spacing.two, paddingVertical: Spacing.one },
+  searchWrap: { paddingHorizontal: Spacing.three, paddingBottom: Spacing.two },
 
   songListContent: { paddingHorizontal: Spacing.three, paddingBottom: Spacing.three },
   empty: { textAlign: 'center', marginTop: Spacing.five },
@@ -446,4 +611,25 @@ const styles = StyleSheet.create({
   courseBar: { width: 4, height: 28, borderRadius: 2, flexShrink: 0 },
   songCrown: { width: 28, height: 28, flexShrink: 0 },
   songMain: { flex: 1, gap: 2 },
+
+  // 難易度別の曲行（genre/manual）
+  detailRow: {
+    gap: Spacing.one,
+    paddingVertical: Spacing.two,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  // アイコン領域を5等分（各 20%）し、難易度アイコンを左詰めで並べる。
+  // プレイ状況（王冠/極マーク）はアイコンの下に置き、列幅を変えない。
+  levelBadgeRow: { flexDirection: 'row', flexWrap: 'nowrap' },
+  levelBadge: {
+    width: '20%',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 0,
+  },
+  levelBadgeDim: { opacity: 0.35 },
+  levelIcon: { width: 30, height: 30 },
+  badgeMarks: { flexDirection: 'row', alignItems: 'center', gap: 1, height: 18 },
+  badgeCrown: { width: 18, height: 18 },
+  badgeClass: { width: 16, height: 16 },
 });

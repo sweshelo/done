@@ -28,6 +28,7 @@ export {
   SELF_TAIKO_NO_KEY,
   ALMOST_MODE_KEY,
   ALMOST_VALUE_KEY,
+  ALMOST_LEVELS_KEY,
   type AlmostMode,
   type AlmostConfig,
 } from './meta';
@@ -41,8 +42,12 @@ export {
   getFoldersForSong,
   getFolderSongs,
   getFolderSongNumbers,
+  getFolderSongDetails,
+  searchCatalogSongs,
   type FolderRef,
   type FolderSongRow,
   type ManualFolderRow,
+  type FolderSongDetail,
+  type CatalogSongRow,
 } from './folders';
 export { exportDatabase, importDatabase } from './backup';

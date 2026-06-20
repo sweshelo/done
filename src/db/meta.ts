@@ -1,5 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import type { Level } from '@/types';
+
 /** app_meta の key 定数 */
 export const SELF_TAIKO_NO_KEY = 'self_taiko_no';
 
@@ -7,15 +9,20 @@ export const SELF_TAIKO_NO_KEY = 'self_taiko_no';
 export const ALMOST_MODE_KEY = 'almost_mode';
 /** 「もうすぐFC/DC」判定の閾値（数値文字列）。 */
 export const ALMOST_VALUE_KEY = 'almost_value';
+/** 「もうすぐFC/DC」の対象難易度（Level の CSV）。未設定なら全難易度。 */
+export const ALMOST_LEVELS_KEY = 'almost_levels';
 
 export type AlmostMode = 'absolute' | 'percent';
 export interface AlmostConfig {
   mode: AlmostMode;
   value: number;
+  /** 対象難易度。空でない配列。既定は全5難易度。 */
+  levels: Level[];
 }
 
 const ALMOST_MODE_DEFAULT: AlmostMode = 'absolute';
 const ALMOST_VALUE_DEFAULT = 3;
+const ALL_LEVELS: Level[] = ['EASY', 'NORMAL', 'DIFFICULT', 'ONI', 'EXTRA'];
 
 export async function getMeta(db: SQLiteDatabase, key: string): Promise<string | null> {
   const row = await db.getFirstAsync<{ value: string }>(
@@ -34,13 +41,18 @@ export async function setMeta(db: SQLiteDatabase, key: string, value: string): P
   );
 }
 
-/** 「もうすぐFC/DC」判定の閾値設定を読む。未設定時は既定 (absolute / 3) を返す。 */
+/** 「もうすぐFC/DC」判定の閾値設定を読む。未設定時は既定 (absolute / 3 / 全難易度) を返す。 */
 export async function getAlmostConfig(db: SQLiteDatabase): Promise<AlmostConfig> {
   const mode = (await getMeta(db, ALMOST_MODE_KEY)) as AlmostMode | null;
   const rawValue = await getMeta(db, ALMOST_VALUE_KEY);
   const value = rawValue != null && rawValue !== '' ? Number(rawValue) : NaN;
+  const rawLevels = await getMeta(db, ALMOST_LEVELS_KEY);
+  const parsedLevels = rawLevels
+    ? (rawLevels.split(',').filter((l) => (ALL_LEVELS as string[]).includes(l)) as Level[])
+    : [];
   return {
     mode: mode === 'percent' || mode === 'absolute' ? mode : ALMOST_MODE_DEFAULT,
     value: Number.isFinite(value) ? value : ALMOST_VALUE_DEFAULT,
+    levels: parsedLevels.length > 0 ? parsedLevels : ALL_LEVELS,
   };
 }
