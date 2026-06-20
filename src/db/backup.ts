@@ -62,14 +62,16 @@ export async function importDatabase(db: SQLiteDatabase, fileUri: string): Promi
       );
     }
 
-    await db.withExclusiveTransactionAsync(async (tx) => {
+    // withExclusiveTransactionAsync は内部で別コネクションを使うため ATTACH した
+    // backup スキーマが見えない。同一コネクション (db) で動く withTransactionAsync を使う。
+    await db.withTransactionAsync(async () => {
       // トランザクション中は FK チェックを commit まで遅延させ、全消し→全投入を安全に行う
-      await tx.execAsync('PRAGMA defer_foreign_keys = ON;');
+      await db.execAsync('PRAGMA defer_foreign_keys = ON;');
       for (const t of [...TABLES].reverse()) {
-        await tx.execAsync(`DELETE FROM main.${t};`);
+        await db.execAsync(`DELETE FROM main.${t};`);
       }
       for (const t of TABLES) {
-        await tx.execAsync(`INSERT INTO main.${t} SELECT * FROM backup.${t};`);
+        await db.execAsync(`INSERT INTO main.${t} SELECT * FROM backup.${t};`);
       }
     });
   } finally {
