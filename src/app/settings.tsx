@@ -1,12 +1,13 @@
+import * as DocumentPicker from 'expo-document-picker';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useState } from 'react';
-import { Alert, Pressable, StyleSheet } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
-import { runMigrations, saveStarCounts, saveTierData } from '@/db';
+import { exportDatabase, importDatabase, runMigrations, saveStarCounts, saveTierData } from '@/db';
 import { useTheme } from '@/hooks/use-theme';
 import { fetchAllSongStars, fetchTierChart } from '@/scrape/taiko-wiki';
 
@@ -18,6 +19,9 @@ export default function SettingsScreen() {
   const [starLoading, setStarLoading] = useState(false);
   const [tierMessage, setTierMessage] = useState<string | null>(null);
   const [tierLoading, setTierLoading] = useState(false);
+  const [backupMessage, setBackupMessage] = useState<string | null>(null);
+  const [exportLoading, setExportLoading] = useState(false);
+  const [restoreLoading, setRestoreLoading] = useState(false);
 
   const updateStars = async () => {
     setStarLoading(true);
@@ -56,6 +60,54 @@ export default function SettingsScreen() {
     }
   };
 
+  const exportDb = async () => {
+    setExportLoading(true);
+    setBackupMessage(null);
+    try {
+      await exportDatabase(db);
+      setBackupMessage('バックアップファイルを書き出しました。');
+    } catch (e) {
+      setBackupMessage(`エラー: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
+  const importDb = async () => {
+    setBackupMessage(null);
+    let uri: string;
+    try {
+      const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
+      if (res.canceled) return;
+      uri = res.assets[0].uri;
+    } catch (e) {
+      setBackupMessage(`エラー: ${e instanceof Error ? e.message : String(e)}`);
+      return;
+    }
+    Alert.alert(
+      'バックアップから復元',
+      '現在のローカルデータはすべて、選択したバックアップの内容で置き換えられます。この操作は取り消せません。',
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        {
+          text: '復元する',
+          style: 'destructive',
+          onPress: async () => {
+            setRestoreLoading(true);
+            try {
+              await importDatabase(db, uri);
+              setBackupMessage('復元が完了しました。記録タブを開くと反映されます。');
+            } catch (e) {
+              setBackupMessage(`エラー: ${e instanceof Error ? e.message : String(e)}`);
+            } finally {
+              setRestoreLoading(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
   const resetDb = () => {
     Alert.alert(
       'DBを初期化',
@@ -83,7 +135,10 @@ export default function SettingsScreen() {
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView edges={['top']} style={styles.safe}>
-        <ThemedText type="subtitle">設定</ThemedText>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}>
+          <ThemedText type="subtitle">設定</ThemedText>
 
         {/* ★数更新セクション */}
         <ThemedView type="backgroundElement" style={styles.section}>
@@ -119,6 +174,34 @@ export default function SettingsScreen() {
           {tierMessage && (
             <ThemedText type="small" themeColor="textSecondary">
               {tierMessage}
+            </ThemedText>
+          )}
+        </ThemedView>
+
+        {/* バックアップ / 復元セクション */}
+        <ThemedView type="backgroundElement" style={styles.section}>
+          <ThemedText type="smallBold">バックアップ / 復元</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            ローカル DB 全体をファイルに書き出し、別端末や再インストール後に取り込めます。
+          </ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            復元時は現在のデータが置き換わります。バックアップは同じアプリバージョンで取得したものを使用してください。
+          </ThemedText>
+          <Pressable
+            style={[styles.btn, { backgroundColor: theme.backgroundSelected }, exportLoading && styles.btnDisabled]}
+            onPress={exportDb}
+            disabled={exportLoading || restoreLoading}>
+            <ThemedText type="smallBold">{exportLoading ? '書き出し中…' : 'バックアップを書き出す'}</ThemedText>
+          </Pressable>
+          <Pressable
+            style={[styles.btn, { backgroundColor: theme.backgroundSelected }, restoreLoading && styles.btnDisabled]}
+            onPress={importDb}
+            disabled={exportLoading || restoreLoading}>
+            <ThemedText type="smallBold">{restoreLoading ? '復元中…' : 'バックアップから復元'}</ThemedText>
+          </Pressable>
+          {backupMessage && (
+            <ThemedText type="small" themeColor="textSecondary">
+              {backupMessage}
             </ThemedText>
           )}
         </ThemedView>
@@ -183,6 +266,7 @@ export default function SettingsScreen() {
             </ThemedText>
           )}
         </ThemedView>
+        </ScrollView>
       </SafeAreaView>
     </ThemedView>
   );
@@ -190,7 +274,13 @@ export default function SettingsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  safe: { flex: 1, paddingHorizontal: Spacing.three, gap: Spacing.two, paddingTop: Spacing.two },
+  safe: { flex: 1 },
+  scrollContent: {
+    paddingHorizontal: Spacing.three,
+    gap: Spacing.two,
+    paddingTop: Spacing.two,
+    paddingBottom: Spacing.six,
+  },
   section: {
     borderRadius: Spacing.two,
     padding: Spacing.three,

@@ -22,3 +22,4 @@ export {
 } from './records';
 export { listPlayers, addPlayer, removePlayer } from './players';
 export { getMeta, setMeta, SELF_TAIKO_NO_KEY } from './meta';
+export { exportDatabase, importDatabase } from './backup';
