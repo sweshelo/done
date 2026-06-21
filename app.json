@@ -40,7 +40,16 @@
         {
           "initialOrientation": "PORTRAIT_UP"
         }
-      ]
+      ],
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-1286751178536982~2118605878",
+          "iosAppId": "ca-app-pub-1286751178536982~2118605878",
+          "userTrackingUsageDescription": "広告の最適化のために利用が許可された範囲で識別子を使用します。"
+        }
+      ],
+      "expo-tracking-transparency"
     ],
     "experiments": {
       "typedRoutes": true,

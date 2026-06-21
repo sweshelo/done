@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 
+import { AdBanner } from '@/components/ads/AdBanner';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import {
@@ -286,9 +287,8 @@ export function RecordDetailModal({ songNumber, level, taikoNo, onClose }: Props
               {scoredHistory.length >= 2 ? (
                 <ScoreLineChart rows={scoredHistory} />
               ) : (
-                <ThemedText type="small" themeColor="textSecondary">
-                  グラフ表示にはスコア入りの記録が2件以上必要です。
-                </ThemedText>
+                // スコア入りが足りずグラフを描けないときは、その領域を広告に充てる
+                <AdBanner />
               )}
 
               {/* 履歴一覧 */}

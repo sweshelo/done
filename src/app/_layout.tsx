@@ -1,14 +1,20 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
 import { SQLiteProvider } from 'expo-sqlite';
-import { Suspense } from 'react';
+import { Suspense, useEffect } from 'react';
 import { ActivityIndicator, useColorScheme, View } from 'react-native';
 
+import { initAds } from '@/ads/init';
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import AppTabs from '@/components/app-tabs';
 import { DATABASE_NAME, runMigrations } from '@/db';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
+
+  // 広告 SDK（同意/ATT 取得 → 初期化）を起動時に1回だけ実行する。
+  useEffect(() => {
+    void initAds();
+  }, []);
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <Suspense

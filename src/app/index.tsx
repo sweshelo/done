@@ -1,7 +1,8 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from 'expo-router';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { useSQLiteContext } from 'expo-sqlite';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
   Image,
@@ -13,6 +14,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ADS_AVAILABLE, ADS_MOCK } from '@/ads/available';
+import { LIST_AD_INTERVAL } from '@/ads/config';
+import { useInterstitialGate } from '@/ads/useInterstitialGate';
+import { AdRow } from '@/components/ads/AdRow';
 import { RecordDetailModal } from '@/components/RecordDetailModal';
 import { TierExportModal } from '@/components/TierExportModal';
 import { TodayDiffModal, startOfToday } from '@/components/TodayDiffModal';
@@ -112,6 +117,9 @@ const CLASS_OPTIONS: Class[] = [
   'KIWAMI',
 ];
 
+/** FlatList の項目。広告 Row はマーカーオブジェクトで表現する。 */
+type ListItem = RecordListRow | { __ad: true; id: string };
+
 export default function RecordsScreen() {
   const db = useSQLiteContext();
   const theme = useTheme();
@@ -143,6 +151,36 @@ export default function RecordsScreen() {
 
   // ---- 今日の差分出力 ----
   const [showTodayDiff, setShowTodayDiff] = useState(false);
+
+  // ---- 全画面広告（今日の差分 / ★10表 を閉じた区切りで表示） ----
+  // overlay はモック時のみ非 null（ツリーに描画する）。実広告は OS 描画なので null。
+  const { maybeShow: maybeShowInterstitial, overlay: interstitialOverlay } = useInterstitialGate();
+
+  const closeTodayDiff = () => {
+    setShowTodayDiff(false);
+    maybeShowInterstitial();
+  };
+
+  const closeTierExport = async () => {
+    setShowTierExport(false);
+    // ★10表は横画面ロック中。portrait に戻してから全画面広告を出す（横向き表示を防ぐ）。
+    await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+    maybeShowInterstitial();
+  };
+
+  // 記録一覧に LIST_AD_INTERVAL 行ごとに広告 Row を差し込む（末尾には付けない）。
+  // Expo Go など広告非対応環境ではマーカーを挿入しない。
+  const listData = useMemo<ListItem[]>(() => {
+    if (!ADS_AVAILABLE && !ADS_MOCK) return rows;
+    const out: ListItem[] = [];
+    rows.forEach((r, i) => {
+      out.push(r);
+      if ((i + 1) % LIST_AD_INTERVAL === 0 && i < rows.length - 1) {
+        out.push({ __ad: true, id: `ad-${i}` });
+      }
+    });
+    return out;
+  }, [rows]);
 
   const load = useCallback(async () => {
     const genreRows = await db.getAllAsync<{ id: string; title: string }>(
@@ -400,8 +438,10 @@ export default function RecordsScreen() {
 
         {/* 記録一覧 */}
         <FlatList
-          data={rows}
-          keyExtractor={(r) => `${r.song_number}-${r.level}`}
+          data={listData}
+          keyExtractor={(item) =>
+            '__ad' in item ? item.id : `${item.song_number}-${item.level}`
+          }
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={
             <ThemedText type="small" themeColor="textSecondary" style={styles.empty}>
@@ -410,9 +450,17 @@ export default function RecordsScreen() {
                 : 'まだ記録がありません。「取得」タブからデータを取得してください。'}
             </ThemedText>
           }
-          renderItem={({ item }) => (
-            <Row row={item} sortKey={sortKey} onPress={() => setSelectedRecord({ song_number: item.song_number, level: item.level })} />
-          )}
+          renderItem={({ item }) =>
+            '__ad' in item ? (
+              <AdRow />
+            ) : (
+              <Row
+                row={item}
+                sortKey={sortKey}
+                onPress={() => setSelectedRecord({ song_number: item.song_number, level: item.level })}
+              />
+            )
+          }
         />
       </SafeAreaView>
 
@@ -425,11 +473,13 @@ export default function RecordsScreen() {
         />
       )}
       {showTierExport && (
-        <TierExportModal taikoNo={selectedTaikoNo} onClose={() => setShowTierExport(false)} />
+        <TierExportModal taikoNo={selectedTaikoNo} onClose={closeTierExport} />
       )}
       {showTodayDiff && (
-        <TodayDiffModal sinceMs={startOfToday()} onClose={() => setShowTodayDiff(false)} />
+        <TodayDiffModal sinceMs={startOfToday()} onClose={closeTodayDiff} />
       )}
+      {/* モック全画面広告（Expo Go のみ非 null） */}
+      {interstitialOverlay}
     </ThemedView>
   );
 }
