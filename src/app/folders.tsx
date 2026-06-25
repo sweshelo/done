@@ -47,6 +47,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { SELF_TAIKO_NO, type Level } from '@/types';
 
 const GENRE_FALLBACK_COLOR = '#212225';
+const STAR_FOLDER_COLOR = '#ec73c6';
 const ALMOST_FC_NAME = 'もうすぐフルコンボ';
 const ALMOST_DC_NAME = 'もうすぐドンだフルコンボ';
 /** ドンだーひろばのお気に入りの曲の上限（song_no_1 .. song_no_30）。 */
@@ -144,12 +145,26 @@ export default function FoldersScreen() {
     ref: { kind: 'almostDc', name: ALMOST_DC_NAME },
     color: CrownColors.FULL_COMBO,
   });
+  items.push({
+    type: 'header',
+    key: 'genre',
+    label: 'ジャンル'
+  })
   for (const g of genres) {
     items.push({
       type: 'folder',
       key: `genre-${g.id}`,
       ref: { kind: 'genre', genreId: g.id, name: g.title },
       color: GenreColors[g.id] ?? GENRE_FALLBACK_COLOR,
+    });
+  }
+  items.push({ type: 'header', key: 'h-star', label: 'むずかしさ' });
+  for (let star = 1; star <= 10; star++) {
+    items.push({
+      type: 'folder',
+      key: `star-${star}`,
+      ref: { kind: 'star', star, name: `☆${star}` },
+      color: STAR_FOLDER_COLOR,
     });
   }
   items.push({

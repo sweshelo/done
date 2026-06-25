@@ -14,11 +14,12 @@ import {
 } from '@/components/ui/DifficultyFilter';
 import { Spacing } from '@/constants/theme';
 import {
-  ALMOST_LEVELS_KEY,
   ALMOST_MODE_KEY,
   ALMOST_VALUE_KEY,
+  MAIN_LEVELS_KEY,
   exportDatabase,
   getAlmostConfig,
+  getMainLevels,
   importDatabase,
   runMigrations,
   saveStarCounts,
@@ -44,15 +45,18 @@ export default function SettingsScreen() {
   // 「もうすぐFC/DC」スマートフォルダの判定閾値
   const [almostMode, setAlmostMode] = useState<AlmostMode>('absolute');
   const [almostValue, setAlmostValue] = useState('3');
-  const [almostLevels, setAlmostLevels] = useState<DifficultyKey[]>(['EASY', 'NORMAL', 'DIFFICULT', 'ONI']);
   const [almostMessage, setAlmostMessage] = useState<string | null>(null);
+
+  // 「メインの難易度」（もうすぐFC/DC・☆別フォルダ共通の対象難易度）
+  const [mainLevels, setMainLevels] = useState<DifficultyKey[]>(['ONI']);
+  const [mainMessage, setMainMessage] = useState<string | null>(null);
 
   useEffect(() => {
     getAlmostConfig(db).then((cfg) => {
       setAlmostMode(cfg.mode);
       setAlmostValue(String(cfg.value));
-      setAlmostLevels(toKeys(cfg.levels));
     });
+    getMainLevels(db).then((levels) => setMainLevels(toKeys(levels)));
   }, [db]);
 
   const saveAlmost = async () => {
@@ -61,14 +65,18 @@ export default function SettingsScreen() {
       setAlmostMessage('1以上の数値を入力してください。');
       return;
     }
-    if (almostLevels.length === 0) {
-      setAlmostMessage('対象難易度を1つ以上選択してください。');
-      return;
-    }
     await setMeta(db, ALMOST_MODE_KEY, almostMode);
     await setMeta(db, ALMOST_VALUE_KEY, String(num));
-    await setMeta(db, ALMOST_LEVELS_KEY, toLevels(almostLevels).join(','));
     setAlmostMessage('保存しました。');
+  };
+
+  const saveMainLevels = async () => {
+    if (mainLevels.length === 0) {
+      setMainMessage('メインの難易度を1つ以上選択してください。');
+      return;
+    }
+    await setMeta(db, MAIN_LEVELS_KEY, toLevels(mainLevels).join(','));
+    setMainMessage('保存しました。');
   };
 
   const updateStars = async () => {
@@ -226,12 +234,31 @@ export default function SettingsScreen() {
           )}
         </ThemedView>
 
+        {/* メインの難易度セクション */}
+        <ThemedView type="backgroundElement" style={styles.section}>
+          <ThemedText type="smallBold">メインの難易度</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            「もうすぐFC / DC」の判定対象や、フォルダタブの「難易度別（☆別）」フォルダの絞り込みに使う難易度です。
+          </ThemedText>
+          <DifficultyFilter selected={mainLevels} onChange={setMainLevels} />
+          <Pressable
+            style={[styles.btn, { backgroundColor: theme.backgroundSelected }]}
+            onPress={saveMainLevels}>
+            <ThemedText type="smallBold">保存する</ThemedText>
+          </Pressable>
+          {mainMessage && (
+            <ThemedText type="small" themeColor="textSecondary">
+              {mainMessage}
+            </ThemedText>
+          )}
+        </ThemedView>
+
         {/* もうすぐFC/DC 閾値セクション */}
         <ThemedView type="backgroundElement" style={styles.section}>
           <ThemedText type="smallBold">もうすぐFC / DC の判定</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
             フォルダタブの「もうすぐフルコンボ」「もうすぐドンだフルコンボ」に表示する条件です。
-            FCは不可、DCは可の残り数がこの閾値以下の曲を集めます。
+            FCは不可、DCは可の残り数がこの閾値以下の曲を集めます。対象難易度は「メインの難易度」に従います。
           </ThemedText>
           <View style={styles.almostRow}>
             <Pressable
@@ -267,10 +294,6 @@ export default function SettingsScreen() {
               {almostMode === 'percent' ? '% 以下' : '個以下'}
             </ThemedText>
           </View>
-          <ThemedText type="small" themeColor="textSecondary">
-            対象難易度
-          </ThemedText>
-          <DifficultyFilter selected={almostLevels} onChange={setAlmostLevels} />
           <Pressable
             style={[styles.btn, { backgroundColor: theme.backgroundSelected }]}
             onPress={saveAlmost}>

@@ -27,10 +27,11 @@ export {
   getMeta,
   setMeta,
   getAlmostConfig,
+  getMainLevels,
   SELF_TAIKO_NO_KEY,
   ALMOST_MODE_KEY,
   ALMOST_VALUE_KEY,
-  ALMOST_LEVELS_KEY,
+  MAIN_LEVELS_KEY,
   type AlmostMode,
   type AlmostConfig,
 } from './meta';

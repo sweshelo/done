@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { SELF_TAIKO_NO, type Class, type Crown, type Level } from '@/types';
-import { getAlmostConfig } from './meta';
+import { getAlmostConfig, getMainLevels } from './meta';
 
 /** 難易度の表示順（かんたん→裏）。getFolderSongDetails のグルーピングで使う。 */
 const LEVEL_ORDER: Record<Level, number> = {
@@ -23,7 +23,9 @@ export type FolderRef =
   | { kind: 'genre'; genreId: string; name: string }
   | { kind: 'almostFc'; name: string }
   | { kind: 'almostDc'; name: string }
-  | { kind: 'manual'; id: number; name: string };
+  //| { kind: 'recent', name: string }
+  | { kind: 'manual'; id: number; name: string }
+  | { kind: 'star'; star: number; name: string };
 
 /** フォルダ内の1曲（表示用）。FC/DC では level と残り数（ng/ok）も付く。 */
 export interface FolderSongRow {
@@ -218,6 +220,26 @@ export async function getFolderSongs(
          ORDER BY fs.added_at ASC`,
         ref.id,
       );
+    case 'star': {
+      // メインの難易度の譜面が ref.star（☆の数）に一致する曲を集める。
+      const mainLevels = await getMainLevels(db);
+      const placeholders = mainLevels.map(() => '?').join(', ');
+      return db.getAllAsync<FolderSongRow>(
+        /* sql */ `
+          SELECT s.number AS song_number, s.title
+          FROM songs s
+          WHERE EXISTS (
+            SELECT 1 FROM charts c
+            WHERE c.song_number = s.number
+              AND c.level IN (${placeholders})
+              AND c.star = ?
+          )
+          ORDER BY s.title ASC
+        `,
+        ...mainLevels,
+        ref.star,
+      );
+    }
   }
 }
 
@@ -261,13 +283,19 @@ export async function getFolderSongDetails(
   ref: FolderRef,
 ): Promise<FolderSongDetail[]> {
   let targetCte: string;
-  let refParam: string | number;
+  const targetParams: (string | number)[] = [];
   if (ref.kind === 'genre') {
     targetCte = 'SELECT gs.song_number FROM genre_songs gs WHERE gs.genre_id = ?';
-    refParam = ref.genreId;
+    targetParams.push(ref.genreId);
   } else if (ref.kind === 'manual') {
     targetCte = 'SELECT fs.song_number FROM folder_songs fs WHERE fs.folder_id = ?';
-    refParam = ref.id;
+    targetParams.push(ref.id);
+  } else if (ref.kind === 'star') {
+    // ☆別フォルダ：メインの難易度の譜面が指定の ☆ の曲を対象にする。
+    const mainLevels = await getMainLevels(db);
+    const placeholders = mainLevels.map(() => '?').join(', ');
+    targetCte = `SELECT c.song_number FROM charts c WHERE c.level IN (${placeholders}) AND c.star = ?`;
+    targetParams.push(...mainLevels, ref.star);
   } else {
     return [];
   }
@@ -302,7 +330,7 @@ export async function getFolderSongDetails(
       ) sc ON sc.song_number = lf.song_number AND sc.level = lf.level
       ORDER BY s.title ASC
     `,
-    refParam,
+    ...targetParams,
     SELF_TAIKO_NO,
     SELF_TAIKO_NO,
     SELF_TAIKO_NO,
