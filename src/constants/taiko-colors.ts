@@ -10,6 +10,19 @@ import type { Class, Crown, Level } from '@/types';
  *   wikiwiki はエージェントから取得不可のためユーザー提供待ち（暫定値）。→ DESIGN.md §8.2
  */
 
+/**
+ * ドンだーひろばのオプションアイコン。記録の score.options は
+ * `.optionImage > img` の相対 src 文字列（例: image/sp/640/status_10_a2_640.png）を保持する。
+ * アイコン自体が「2.0」「あべこべ」「?」等のラベル画像なので、本家アイコンをそのまま表示する。
+ */
+const DONDERHIROBA_BASE = 'https://donderhiroba.jp';
+
+/** 保存されたオプション画像の相対 src から表示用 URI を作る。 */
+export function optionImageUri(src: string): string {
+  if (/^https?:\/\//.test(src)) return src;
+  return `${DONDERHIROBA_BASE}/${src.replace(/^\//, '')}`;
+}
+
 /** Crown（達成状況）の色。SPEC 指定。 */
 export const CrownColors: Record<Crown, string> = {
   NO_PLAY: '#444',

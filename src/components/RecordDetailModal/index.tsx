@@ -20,6 +20,7 @@ import {
   CrownImages,
   LevelColors,
   LevelLabels,
+  optionImageUri,
 } from '@/constants/taiko-colors';
 import { Spacing } from '@/constants/theme';
 import { addSongToFolder, getFoldersForSong, listManualFolders, removeSongFromFolder } from '@/db';
@@ -40,6 +41,7 @@ interface DetailRow {
   ng: number | null;
   combo: number | null;
   pound: number | null;
+  options: string;
   updated_at: number;
   star: number | null;
   tier: string | null;
@@ -72,6 +74,17 @@ function formatDate(updatedAt: number): string {
   return new Date(updatedAt).toLocaleDateString('ja-JP');
 }
 
+/** options 列の JSON 文字列をオプション画像 src の配列に変換する（壊れていれば空配列）。 */
+function parseOptions(json: string | null | undefined): string[] {
+  if (!json) return [];
+  try {
+    const v = JSON.parse(json);
+    return Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
 export function RecordDetailModal({ songNumber, level, taikoNo, onClose }: Props) {
   const db = useSQLiteContext();
   const theme = useTheme();
@@ -86,7 +99,7 @@ export function RecordDetailModal({ songNumber, level, taikoNo, onClose }: Props
   useEffect(() => {
     db.getAllAsync<DetailRow>(
       `SELECT r.id, s.title AS song_title, r.level, r.crown, r.class,
-              r.score_total, r.good, r.ok, r.ng, r.combo, r.pound, r.updated_at,
+              r.score_total, r.good, r.ok, r.ng, r.combo, r.pound, r.options, r.updated_at,
               lv.star, lv.tier,
               (r.good + r.ok + r.ng) AS total_notes,
               CASE WHEN (r.good + r.ok + r.ng) > 0
@@ -178,6 +191,8 @@ export function RecordDetailModal({ songNumber, level, taikoNo, onClose }: Props
     latestScored && latestScored.total_notes != null && latestScored.total_notes > 0
       ? ((latestScored.achievement ?? 0) * 100).toFixed(2)
       : '—';
+  // 最新スコア入り行に紐づく使用オプション（本家のアイコン画像 src）。
+  const options = parseOptions(latestScored?.options);
 
   // 比較棒グラフ。表示中の本人(taikoNo)のスコアを基準(差の基準)に、全員を同じ最大値で正規化。
   const viewedScore = latestScored?.score_total ?? null;
@@ -242,6 +257,25 @@ export function RecordDetailModal({ songNumber, level, taikoNo, onClose }: Props
               <Stat label="素点" value={latestScored?.base_score != null ? latestScored.base_score.toLocaleString() : '—'} />
               <Stat label="取得日" value={formatDate(latest.updated_at)} />
             </View>
+
+            {/* 使用オプション（本家アイコンをそのまま表示） */}
+            {options.length > 0 && (
+              <View style={styles.optionsBlock}>
+                <ThemedText type="small" themeColor="textSecondary">
+                  オプション
+                </ThemedText>
+                <View style={styles.optionIcons}>
+                  {options.map((src) => (
+                    <Image
+                      key={src}
+                      source={{ uri: optionImageUri(src) }}
+                      style={styles.optionIcon}
+                      resizeMode="contain"
+                    />
+                  ))}
+                </View>
+              </View>
+            )}
           </View>
 
           {/* 手動フォルダへの登録（自分の閲覧時のみ） */}
@@ -577,6 +611,10 @@ const styles = StyleSheet.create({
     minWidth: '30%',
     gap: 1,
   },
+
+  optionsBlock: { gap: Spacing.one },
+  optionIcons: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.one },
+  optionIcon: { width: 28, height: 28, borderRadius: 4 },
 
   chart: {
     height: CHART_HEIGHT,
