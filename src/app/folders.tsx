@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AddSongsModal } from '@/components/folders/AddSongsModal';
 import { FavoriteSyncModal } from '@/components/folders/FavoriteSyncModal';
 import { RecordDetailModal } from '@/components/RecordDetailModal';
+import { RecordRow } from '@/components/RecordRow';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import {
@@ -28,9 +29,7 @@ import {
   CrownColors,
   CrownImages,
   GenreColors,
-  LevelColors,
   LevelImages,
-  LevelLabels,
 } from '@/constants/taiko-colors';
 import { Spacing } from '@/constants/theme';
 import {
@@ -38,11 +37,12 @@ import {
   deleteFolder,
   getFolderSongDetails,
   getFolderSongNumbers,
-  getFolderSongs,
+  getSmartFolderRecords,
   listManualFolders,
   renameFolder,
 } from '@/db';
-import type { FolderRef, FolderSongDetail, FolderSongRow, ManualFolderRow } from '@/db/folders';
+import type { FolderRef, FolderSongDetail, ManualFolderRow } from '@/db/folders';
+import type { RecordListRow, RecordSortKey } from '@/db/records';
 import { useTheme } from '@/hooks/use-theme';
 import { SELF_TAIKO_NO, type Level } from '@/types';
 
@@ -294,10 +294,14 @@ export default function FoldersScreen() {
 function FolderDetailModal({ folder, onClose }: { folder: FolderRef; onClose: () => void }) {
   const db = useSQLiteContext();
   const theme = useTheme();
-  const isAlmost = folder.kind === 'almostFc' || folder.kind === 'almostDc';
+  // スマートフォルダ（もうすぐFC/DC・最近更新）は記録タブと同じ Row で譜面単位に表示する。
+  const isSmart =
+    folder.kind === 'almostFc' || folder.kind === 'almostDc' || folder.kind === 'recent';
+  // almost は完成に近い順を主表示（score）、recent は更新日時を主表示にする。
+  const smartSortKey: RecordSortKey = folder.kind === 'recent' ? 'updatedAt' : 'score';
 
-  // almost: 単一 level 行（FolderSongRow）／genre・manual: 難易度別（FolderSongDetail）
-  const [songs, setSongs] = useState<FolderSongRow[]>([]);
+  // smart: 記録一覧行（RecordListRow）／genre・manual・star: 難易度別（FolderSongDetail）
+  const [smartRows, setSmartRows] = useState<RecordListRow[]>([]);
   const [details, setDetails] = useState<FolderSongDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState<SongSearchState>(EMPTY_SONG_SEARCH);
@@ -329,15 +333,15 @@ function FolderDetailModal({ folder, onClose }: { folder: FolderRef; onClose: ()
 
   const load = useCallback(async () => {
     setLoading(true);
-    if (isAlmost) {
-      const rows = await getFolderSongs(db, folder);
-      setSongs(rows);
+    if (isSmart) {
+      const rows = await getSmartFolderRecords(db, folder);
+      setSmartRows(rows);
     } else {
       const rows = await getFolderSongDetails(db, folder);
       setDetails(rows);
     }
     setLoading(false);
-  }, [db, folder, isAlmost]);
+  }, [db, folder, isSmart]);
 
   useFocusEffect(
     useCallback(() => {
@@ -351,9 +355,7 @@ function FolderDetailModal({ folder, onClose }: { folder: FolderRef; onClose: ()
     }, [load]),
   );
 
-  const remainingLabel = folder.kind === 'almostFc' ? '不可' : '可';
-
-  // クライアント側の絞り込み・並べ替え（genre/manual のみスコア対象）。
+  // クライアント側の絞り込み・並べ替え（スコア対象）。
   const q = search.titleQuery.trim().toLowerCase();
   const filteredDetails = (() => {
     let list = details;
@@ -371,10 +373,23 @@ function FolderDetailModal({ folder, onClose }: { folder: FolderRef; onClose: ()
     }
     return list;
   })();
-  const filteredSongs = q
-    ? songs.filter((s) => (s.title ?? '').toLowerCase().includes(q))
-    : songs;
-  const visibleCount = isAlmost ? filteredSongs.length : filteredDetails.length;
+  const filteredSmart = (() => {
+    let list = smartRows;
+    if (q) list = list.filter((r) => (r.song_title ?? '').toLowerCase().includes(q));
+    if (search.minScore != null)
+      list = list.filter((r) => r.score_total != null && r.score_total >= search.minScore!);
+    if (search.scoreSort !== 'none') {
+      const dir = search.scoreSort === 'asc' ? 1 : -1;
+      list = [...list].sort((a, b) => {
+        if (a.score_total == null && b.score_total == null) return 0;
+        if (a.score_total == null) return 1; // 未記録は末尾
+        if (b.score_total == null) return -1;
+        return (a.score_total - b.score_total) * dir;
+      });
+    }
+    return list;
+  })();
+  const visibleCount = isSmart ? filteredSmart.length : filteredDetails.length;
 
   return (
     <Modal transparent animationType="slide" onRequestClose={onClose}>
@@ -408,43 +423,34 @@ function FolderDetailModal({ folder, onClose }: { folder: FolderRef; onClose: ()
           <SongSearchBar value={search} onChange={setSearch} />
         </View>
 
-        {isAlmost ? (
+        {isSmart ? (
           <FlatList
-            data={filteredSongs}
-            keyExtractor={(s, i) => `${s.song_number}-${s.level ?? ''}-${i}`}
-            contentContainerStyle={styles.songListContent}
+            data={filteredSmart}
+            keyExtractor={(r) => `${r.song_number}-${r.level}`}
+            contentContainerStyle={styles.smartListContent}
             keyboardShouldPersistTaps="handled"
             ListEmptyComponent={
               <ThemedText type="small" themeColor="textSecondary" style={styles.empty}>
-                {loading ? '読み込み中…' : '条件に合う曲がありません。設定の閾値・対象難易度を確認してください。'}
+                {loading
+                  ? '読み込み中…'
+                  : folder.kind === 'recent'
+                    ? '最近スコアを更新した曲がありません。'
+                    : '条件に合う曲がありません。設定の閾値・対象難易度を確認してください。'}
               </ThemedText>
             }
             renderItem={({ item }) => (
-              <Pressable onPress={() => item.level && setSelected({ song_number: item.song_number, level: item.level })}>
-                <View style={[styles.songRow, { borderColor: theme.text + '18' }]}>
-                  {item.level && (
-                    <View style={[styles.courseBar, { backgroundColor: LevelColors[item.level] }]} />
-                  )}
-                  {item.crown && CrownImages[item.crown] && (
-                    <Image source={CrownImages[item.crown]} style={styles.songCrown} resizeMode="contain" />
-                  )}
-                  <View style={styles.songMain}>
-                    <ThemedText type="smallBold" numberOfLines={1}>
-                      {item.title ?? `#${item.song_number}`}
-                    </ThemedText>
-                    {item.level && (
-                      <ThemedText type="small" themeColor="textSecondary">
-                        {LevelLabels[item.level]}
-                      </ThemedText>
-                    )}
-                  </View>
-                  {item.remaining != null && (
-                    <ThemedText type="smallBold">
-                      残り{remainingLabel} {item.remaining}
-                    </ThemedText>
-                  )}
-                </View>
-              </Pressable>
+              <RecordRow
+                row={item}
+                sortKey={smartSortKey}
+                remaining={
+                  folder.kind === 'almostFc'
+                    ? { label: '不可', count: item.ng }
+                    : folder.kind === 'almostDc'
+                      ? { label: '可', count: item.ok }
+                      : undefined
+                }
+                onPress={() => setSelected({ song_number: item.song_number, level: item.level })}
+              />
             )}
           />
         ) : (
@@ -621,17 +627,14 @@ const styles = StyleSheet.create({
   searchWrap: { paddingHorizontal: Spacing.three, paddingBottom: Spacing.two },
 
   songListContent: { paddingHorizontal: Spacing.three, paddingBottom: Spacing.three },
-  empty: { textAlign: 'center', marginTop: Spacing.five },
-  songRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
+  // スマートフォルダは記録タブの Row を使うため、記録一覧と同じ行間（gap）を取る。
+  smartListContent: {
+    gap: Spacing.one,
+    paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingBottom: Spacing.three,
   },
-  courseBar: { width: 4, height: 28, borderRadius: 2, flexShrink: 0 },
-  songCrown: { width: 28, height: 28, flexShrink: 0 },
-  songMain: { flex: 1, gap: 2 },
+  empty: { textAlign: 'center', marginTop: Spacing.five },
 
   // 難易度別の曲行（genre/manual）
   detailRow: {

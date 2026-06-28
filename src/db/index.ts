@@ -21,6 +21,7 @@ export {
   type RecordFilter,
   type RecordSort,
   type RecordSortKey,
+  type RecordListRow,
   type TodayDiffRow,
   type ScoreUpdateDay,
 } from './records';
@@ -48,6 +49,7 @@ export {
   getFolderSongs,
   getFolderSongNumbers,
   getFolderSongDetails,
+  getSmartFolderRecords,
   searchCatalogSongs,
   type FolderRef,
   type FolderSongRow,

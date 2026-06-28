@@ -1,10 +1,8 @@
-import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   FlatList,
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RecordDetailModal } from '@/components/RecordDetailModal';
+import { RecordRow } from '@/components/RecordRow';
 import { TierExportModal } from '@/components/TierExportModal';
 import { TodayDiffModal } from '@/components/TodayDiffModal';
 import { ThemedText } from '@/components/themed-text';
@@ -24,46 +23,12 @@ import {
   toLevels,
   type DifficultyKey,
 } from '@/components/ui/DifficultyFilter';
-import {
-  ClassImages,
-  ClassLabels,
-  LevelColors,
-  LevelLabels,
-  CrownColors,
-  CrownImages,
-  resolveGenreColors,
-} from '@/constants/taiko-colors';
+import { ClassLabels, CrownColors } from '@/constants/taiko-colors';
 import { Spacing } from '@/constants/theme';
 import { buildRecordQuery, listPlayers } from '@/db';
-import type { RecordFilter, RecordSort, RecordSortKey } from '@/db/records';
+import type { RecordFilter, RecordSort, RecordSortKey, RecordListRow } from '@/db/records';
 import { useTheme } from '@/hooks/use-theme';
-import { SELF_TAIKO_NO, type Class, type Level, type Crown, type Genre, type Player } from '@/types';
-
-/** buildRecordQuery が返す一覧行（computed cols 込み） */
-interface RecordListRow {
-  song_number: number;
-  song_title: string | null;
-  level: Level;
-  crown: Crown;
-  class: Class;
-  // 王冠のみ行（ライバルのスコア欠落）では score 系列が NULL になりうる
-  score_total: number | null;
-  good: number | null;
-  ok: number | null;
-  ng: number | null;
-  pound: number | null;
-  star: number | null;
-  tier: string | null;
-  updated_at: number;
-  total_notes: number | null;
-  achievement: number | null; // 0.0 ~ 1.0
-  /** 素点 = score_total - pound * 100 */
-  base_score: number | null;
-  /** カンマ区切りのジャンル ID 文字列 (GROUP_CONCAT) */
-  genre_ids: string | null;
-  /** 「自分と近い順」ソート時のみ付与される、自分の同譜面スコア */
-  self_score?: number | null;
-}
+import { SELF_TAIKO_NO, type Class, type Crown, type Genre, type Level, type Player } from '@/types';
 
 /** ソートキーの表示ラベル */
 const SORT_LABELS: Record<RecordSortKey, string> = {
@@ -411,7 +376,7 @@ export default function RecordsScreen() {
             </ThemedText>
           }
           renderItem={({ item }) => (
-            <Row row={item} sortKey={sortKey} onPress={() => setSelectedRecord({ song_number: item.song_number, level: item.level })} />
+            <RecordRow row={item} sortKey={sortKey} onPress={() => setSelectedRecord({ song_number: item.song_number, level: item.level })} />
           )}
         />
       </SafeAreaView>
@@ -431,156 +396,6 @@ export default function RecordsScreen() {
         <TodayDiffModal taikoNo={selectedTaikoNo} onClose={() => setShowTodayDiff(false)} />
       )}
     </ThemedView>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Row
-// ---------------------------------------------------------------------------
-
-function Row({
-  row,
-  sortKey,
-  onPress,
-}: {
-  row: RecordListRow;
-  sortKey: RecordSortKey;
-  onPress: () => void;
-}) {
-  const achievePct =
-    row.total_notes != null && row.total_notes > 0
-      ? ((row.achievement ?? 0) * 100).toFixed(2)
-      : '—';
-  const fmt = (n: number | null) => (n != null ? n.toLocaleString() : '—');
-
-  // ジャンル背景色の計算
-  const { color1, color2, isDual } = resolveGenreColors(row.genre_ids);
-
-  // ソートキーに応じた rowRight 内容
-  let rowRightTop: React.ReactNode;
-  let rowRightBottom: React.ReactNode;
-  switch (sortKey) {
-    case 'score':
-      rowRightTop = <ThemedText type="smallBold">{fmt(row.score_total)}</ThemedText>;
-      rowRightBottom = (
-        <View style={styles.rowRightBottomRow}>
-          <ThemedText type="small" themeColor="textSecondary">
-            {achievePct !== '—' ? `${achievePct}%` : '—'}
-          </ThemedText>
-          {ClassImages[row.class] && (
-            <Image source={ClassImages[row.class]} style={styles.classIcon} resizeMode="contain" />
-          )}
-        </View>
-      );
-      break;
-    case 'closeToSelf': {
-      // 自分とのスコア差分を主表示にする（自分の記録が無い譜面は差分なし）
-      const diff =
-        row.score_total != null && row.self_score != null ? row.score_total - row.self_score : null;
-      rowRightTop = (
-        <ThemedText type="smallBold">
-          {diff != null ? `${diff >= 0 ? '+' : ''}${diff.toLocaleString()}` : '—'}
-        </ThemedText>
-      );
-      rowRightBottom = (
-        <ThemedText type="small" themeColor="textSecondary">
-          {fmt(row.score_total)}
-        </ThemedText>
-      );
-      break;
-    }
-    case 'baseScore':
-      rowRightTop = <ThemedText type="smallBold">{fmt(row.base_score)}</ThemedText>;
-      rowRightBottom = (
-        <ThemedText type="small" themeColor="textSecondary">
-          {row.score_total != null && row.base_score != null
-            ? `(+ ${(row.score_total - row.base_score).toLocaleString()})`
-            : '—'}
-        </ThemedText>
-      );
-      break;
-    case 'achievement':
-      rowRightTop = (
-        <ThemedText type="smallBold">{achievePct !== '—' ? `${achievePct}%` : '—'}</ThemedText>
-      );
-      rowRightBottom = (
-        <ThemedText type="small" themeColor="textSecondary">
-          {row.total_notes != null && row.total_notes > 0 ? `${row.good} / ${row.total_notes}` : '—'}
-        </ThemedText>
-      );
-      break;
-    case 'updatedAt':
-      rowRightTop = (
-        <ThemedText type="smallBold">
-          {row.updated_at === 0
-            ? '初期化'
-            : new Date(row.updated_at).toLocaleDateString('ja-JP')}
-        </ThemedText>
-      );
-      rowRightBottom = (
-        <ThemedText type="small" themeColor="textSecondary">
-          {fmt(row.score_total)}
-        </ThemedText>
-      );
-      break;
-    default:
-      rowRightTop = <ThemedText type="smallBold">{fmt(row.score_total)}</ThemedText>;
-      rowRightBottom = (
-        <ThemedText type="small" themeColor="textSecondary">
-          {achievePct !== '—' ? `${achievePct}%` : '—'}
-          {row.total_notes != null && row.total_notes > 0 ? ` / ${row.total_notes}` : ''}
-        </ThemedText>
-      );
-      break;
-  }
-
-  return (
-    <Pressable onPress={onPress}>
-      <View style={styles.row}>
-        {/* ジャンル背景（対角線分割または単色） */}
-        {isDual ? (
-          <LinearGradient
-            colors={[color1, color1, color2, color2]}
-            locations={[0, 0.499, 0.501, 1]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={StyleSheet.absoluteFill}
-          />
-        ) : (
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: color1 }]} />
-        )}
-
-        {/* 王冠アイコン */}
-        {CrownImages[row.crown] ? (
-          <Image
-            source={CrownImages[row.crown]}
-            style={styles.crownImage}
-            resizeMode="contain"
-          />
-        ) : (
-          <View style={[styles.crownDot, { backgroundColor: CrownColors[row.crown] }]} />
-        )}
-
-        {/* 難易度色バー */}
-        <View style={[styles.coursebar, { backgroundColor: LevelColors[row.level] }]} />
-
-        <View style={styles.rowMain}>
-          <ThemedText type="smallBold" numberOfLines={1}>
-            {row.song_title ?? `#${row.song_number}`}
-          </ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
-            {LevelLabels[row.level]}
-            {row.star != null ? ` ★${row.star}` : ''}
-            {row.tier ? ` / ${row.tier}` : ''}
-          </ThemedText>
-        </View>
-
-        <View style={styles.rowRight}>
-          {rowRightTop}
-          {rowRightBottom}
-        </View>
-      </View>
-    </Pressable>
   );
 }
 
@@ -702,21 +517,4 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.six,
   },
   empty: { textAlign: 'center', marginTop: Spacing.five },
-
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    borderRadius: Spacing.two,
-    overflow: 'hidden',
-  },
-  crownImage: { width: 36, height: 36, flexShrink: 0, marginHorizontal: -Spacing.two },
-  crownDot: { width: 10, height: 10, borderRadius: 5, flexShrink: 0 },
-  coursebar: { width: 4, height: 32, borderRadius: 2, flexShrink: 0 },
-  rowMain: { flex: 1, gap: 2 },
-  rowRight: { alignItems: 'flex-end', gap: 2, flexShrink: 0 },
-  rowRightBottomRow: { flexDirection: 'row', alignItems: 'center', gap: 0 },
-  classIcon: { width: 24, height: 24 },
 });

@@ -2,7 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { SELF_TAIKO_NO, type Class, type Crown, type Level } from '@/types';
 import { getAlmostConfig, getMainLevels } from './meta';
-import { getScoreUpdateDays } from './records';
+import { buildRecordQuery, getScoreUpdateDays, type RecordListRow } from './records';
 
 /** 「最近スコアを更新した曲」フォルダで遡る、スコア更新日の日数。 */
 const RECENT_UPDATE_DAYS = 3;
@@ -263,6 +263,39 @@ export async function getFolderSongs(
       );
     }
   }
+}
+
+/**
+ * スマートフォルダ（もうすぐFC / もうすぐDC / 最近スコアを更新した曲）の中身を、
+ * 記録一覧と同じ RecordListRow（譜面=song×level 単位）で返す。記録タブと同じ Row で表示する用途。
+ * almost は完成に近い順（残数 col 昇順）、recent は更新日時の新しい順で並べる。
+ */
+export async function getSmartFolderRecords(
+  db: SQLiteDatabase,
+  ref: FolderRef,
+): Promise<RecordListRow[]> {
+  if (ref.kind === 'recent') {
+    const days = await getScoreUpdateDays(db, SELF_TAIKO_NO, RECENT_UPDATE_DAYS);
+    if (days.length === 0) return [];
+    const since = days[days.length - 1].startMs; // 直近 N 日のうち最古の 0:00
+    const { sql, params } = buildRecordQuery(
+      { taikoNo: SELF_TAIKO_NO, updatedSince: since },
+      { key: 'updatedAt', desc: true },
+    );
+    return db.getAllAsync<RecordListRow>(sql, ...params);
+  }
+
+  // almostFc / almostDc
+  const { mode, value, levels } = await getAlmostConfig(db);
+  const col = ref.kind === 'almostFc' ? 'ng' : 'ok';
+  const crown: Crown = ref.kind === 'almostFc' ? 'CLEAR' : 'FULL_COMBO';
+  const { sql, params } = buildRecordQuery(
+    { taikoNo: SELF_TAIKO_NO, crowns: [crown], levels, almost: { col, mode, value } },
+    { key: 'score', desc: true },
+  );
+  const rows = await db.getAllAsync<RecordListRow>(sql, ...params);
+  // 完成に近い順（残数が少ない順）に並べる。
+  return rows.sort((a, b) => (a[col] ?? Infinity) - (b[col] ?? Infinity));
 }
 
 /** お気に入り登録用の曲番号配列（song_no 重複排除、順序保持）。 */

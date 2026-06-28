@@ -2,6 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { SELF_TAIKO_NO, type Class, type Level, type Crown, type Record as DoneRecord } from '@/types';
 import type { Target } from '@/scrape/messages';
+import type { AlmostMode } from './meta';
 
 /** DB の records 行（snake_case）。score 系列はライバルの欠落時 NULL になりうる。 */
 interface RecordRow {
@@ -389,6 +390,39 @@ export interface RecordFilter {
   maxStar?: number;
   tier?: string;
   minScore?: number;
+  /** 最新行の更新日時がこの値以上の譜面のみ（「最近スコアを更新した曲」フォルダ用）。 */
+  updatedSince?: number;
+  /**
+   * 「もうすぐFC/DC」フォルダ用の絞り込み。col の残数（不可=ng / 可=ok）が 0 超かつ
+   * 閾値以下の譜面に限定する。crowns/levels と併用する。
+   */
+  almost?: { col: 'ng' | 'ok'; mode: AlmostMode; value: number };
+}
+
+/** 記録一覧の 1 行（buildRecordQuery が返す computed cols 込みの行）。 */
+export interface RecordListRow {
+  song_number: number;
+  song_title: string | null;
+  level: Level;
+  crown: Crown;
+  class: Class;
+  // 王冠のみ行（ライバルのスコア欠落）では score 系列が NULL になりうる
+  score_total: number | null;
+  good: number | null;
+  ok: number | null;
+  ng: number | null;
+  pound: number | null;
+  star: number | null;
+  tier: string | null;
+  updated_at: number;
+  total_notes: number | null;
+  achievement: number | null; // 0.0 ~ 1.0
+  /** 素点 = score_total - pound * 100 */
+  base_score: number | null;
+  /** カンマ区切りのジャンル ID 文字列 (GROUP_CONCAT) */
+  genre_ids: string | null;
+  /** 「自分と近い順」ソート時のみ付与される、自分の同譜面スコア */
+  self_score?: number | null;
 }
 
 export type RecordSortKey =
@@ -537,6 +571,22 @@ export function buildRecordQuery(
   if (filter.genreId) {
     where.push('gs.genre_id = ?');
     params.push(filter.genreId);
+  }
+  if (filter.updatedSince != null) {
+    where.push('r.updated_at >= ?');
+    params.push(filter.updatedSince);
+  }
+  if (filter.almost) {
+    const { col, mode, value } = filter.almost;
+    // スコア入りの最新行に対し、残数(col)が 0 超かつ閾値以下の譜面に限定する。
+    where.push('(r.good + r.ok + r.ng) > 0');
+    where.push(`r.${col} > 0`);
+    if (mode === 'percent') {
+      where.push(`CAST(r.${col} AS REAL) / (r.good + r.ok + r.ng) * 100 <= ?`);
+    } else {
+      where.push(`r.${col} <= ?`);
+    }
+    params.push(value);
   }
 
   const dir = sort.desc !== false ? 'DESC' : 'ASC';
