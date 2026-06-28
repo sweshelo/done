@@ -2,7 +2,7 @@
   "expo": {
     "name": "done",
     "slug": "done",
-    "version": "1.2.0",
+    "version": "1.3.0",
     "icon": "./assets/images/done-icon.png",
     "scheme": "done",
     "userInterfaceStyle": "automatic",
