@@ -6,7 +6,7 @@ import { WebView, type WebViewMessageEvent, type WebViewNavigation } from 'react
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { TodayDiffModal, startOfToday } from '@/components/TodayDiffModal';
+import { TodayDiffModal, startOfToday, startOfTomorrow } from '@/components/TodayDiffModal';
 import {
   DIFFICULTY_KEYS,
   DifficultyFilter,
@@ -17,7 +17,7 @@ import { Spacing } from '@/constants/theme';
 import {
   addPlayer,
   getMeta,
-  getTodayDiffs,
+  getDiffsInRange,
   listPlayers,
   removePlayer,
   resolveTargetsByTitle,
@@ -245,7 +245,7 @@ export default function CollectScreen() {
           );
           // 自分の取得（初回全件取得を除く）で当日差分があれば自動でモーダルを開く
           if (taikoNo === SELF_TAIKO_NO && !wasInitial && inserted > 0) {
-            const diffs = await getTodayDiffs(db, startOfToday());
+            const diffs = await getDiffsInRange(db, startOfToday(), startOfTomorrow());
             if (diffs.length > 0) setShowTodayDiff(true);
           }
           break;
@@ -538,7 +538,7 @@ export default function CollectScreen() {
 
       {/* 取得完了後に当日差分を自動表示 */}
       {showTodayDiff && (
-        <TodayDiffModal sinceMs={startOfToday()} onClose={() => setShowTodayDiff(false)} />
+        <TodayDiffModal onClose={() => setShowTodayDiff(false)} />
       )}
     </ThemedView>
   );

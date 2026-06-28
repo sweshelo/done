@@ -2,6 +2,10 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { SELF_TAIKO_NO, type Class, type Crown, type Level } from '@/types';
 import { getAlmostConfig, getMainLevels } from './meta';
+import { getScoreUpdateDays } from './records';
+
+/** 「最近スコアを更新した曲」フォルダで遡る、スコア更新日の日数。 */
+const RECENT_UPDATE_DAYS = 3;
 
 /** 難易度の表示順（かんたん→裏）。getFolderSongDetails のグルーピングで使う。 */
 const LEVEL_ORDER: Record<Level, number> = {
@@ -23,7 +27,7 @@ export type FolderRef =
   | { kind: 'genre'; genreId: string; name: string }
   | { kind: 'almostFc'; name: string }
   | { kind: 'almostDc'; name: string }
-  //| { kind: 'recent', name: string }
+  | { kind: 'recent', name: string }
   | { kind: 'manual'; id: number; name: string }
   | { kind: 'star'; star: number; name: string };
 
@@ -211,6 +215,24 @@ export async function getFolderSongs(
     case 'almostFc':
     case 'almostDc':
       return getAlmostSongs(db, ref.kind);
+    case 'recent': {
+      // 直近 RECENT_UPDATE_DAYS 日分のスコア更新日に更新があった曲を新しい順で集める。
+      const days = await getScoreUpdateDays(db, SELF_TAIKO_NO, RECENT_UPDATE_DAYS);
+      if (days.length === 0) return [];
+      const since = days[days.length - 1].startMs; // 直近 N 日のうち最古の 0:00
+      return db.getAllAsync<FolderSongRow>(
+        /* sql */ `
+          SELECT s.number AS song_number, s.title, MAX(r.updated_at) AS mx
+          FROM records r
+          JOIN songs s ON s.number = r.song_number
+          WHERE r.taiko_no = ? AND r.score_total IS NOT NULL AND r.updated_at >= ?
+          GROUP BY s.number
+          ORDER BY mx DESC, s.title ASC
+        `,
+        SELF_TAIKO_NO,
+        since,
+      );
+    }
     case 'manual':
       return db.getAllAsync<FolderSongRow>(
         `SELECT s.number AS song_number, s.title
@@ -296,6 +318,14 @@ export async function getFolderSongDetails(
     const placeholders = mainLevels.map(() => '?').join(', ');
     targetCte = `SELECT c.song_number FROM charts c WHERE c.level IN (${placeholders}) AND c.star = ?`;
     targetParams.push(...mainLevels, ref.star);
+  } else if (ref.kind === 'recent') {
+    // 「最近スコアを更新した曲」：直近 N 日分のスコア更新があった曲を対象にする。
+    const days = await getScoreUpdateDays(db, SELF_TAIKO_NO, RECENT_UPDATE_DAYS);
+    if (days.length === 0) return [];
+    const since = days[days.length - 1].startMs;
+    targetCte =
+      'SELECT DISTINCT song_number FROM records WHERE taiko_no = ? AND score_total IS NOT NULL AND updated_at >= ?';
+    targetParams.push(SELF_TAIKO_NO, since);
   } else {
     return [];
   }

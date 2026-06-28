@@ -146,6 +146,12 @@ export default function FoldersScreen() {
     color: CrownColors.FULL_COMBO,
   });
   items.push({
+    type: 'folder',
+    key: 'recent',
+    ref: { kind: 'recent', name: '最近スコアを更新した曲'},
+    color: '#4cbfae'
+  })
+  items.push({
     type: 'header',
     key: 'genre',
     label: 'ジャンル'

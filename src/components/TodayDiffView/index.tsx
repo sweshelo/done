@@ -16,7 +16,7 @@ import type { Crown } from '@/types';
 
 interface Props {
   rows: TodayDiffRow[];
-  /** ヘッダーに出す日付ラベル（例: 2026/06/20） */
+  /** ヘッダーに出す日付ラベル（例: 6月20日） */
   dateLabel: string;
   /** カード幅。プレビュー実測幅に合わせて渡す（プレビュー＝キャプチャ共通）。 */
   width: number;
@@ -42,10 +42,8 @@ export const TodayDiffView = forwardRef<View, Props>(({ rows, dateLabel, width }
   // リサイズせず直接キャプチャするためルート View を固定幅・collapsable=false にする
   <View ref={ref} style={[styles.container, { width }]} collapsable={false}>
     <View style={styles.header}>
-      <Text style={styles.headerTitle}>今日の差分</Text>
-      <Text style={styles.headerMeta}>
-        {dateLabel} ・ {rows.length} 件
-      </Text>
+      <Text style={styles.headerTitle}>{dateLabel}の差分</Text>
+      <Text style={styles.headerMeta}>{rows.length} 件</Text>
     </View>
     {rows.map((row) => (
       <DiffCard key={`${row.song_number}-${row.level}`} row={row} />

@@ -211,12 +211,58 @@ export async function resolveTargetsByTitle(
 }
 
 // ---------------------------------------------------------------------------
-// 今日の差分（SNS 出力用）
+// スコア更新日（差分の日付選択・「最近」フォルダ共通）
+// ---------------------------------------------------------------------------
+
+/** スコア更新があった 1 日。startMs/endMs はローカル暦日の境界（endMs は排他的上限）。 */
+export interface ScoreUpdateDay {
+  /** 'YYYY-MM-DD'（localtime） */
+  day: string;
+  /** その日 0:00 のエポック ms */
+  startMs: number;
+  /** 翌日 0:00 のエポック ms（排他的上限） */
+  endMs: number;
+  /** その日に更新された譜面数（song×level） */
+  count: number;
+}
+
+/**
+ * 指定プレイヤー（既定=自分）のスコア入り記録を、ローカル暦日で集約して新しい順に返す。
+ * 初回全件取得の updated_at=0 センチネルは除外する。limit 指定で件数を絞れる。
+ * SQLite の date(...,'localtime') と JS Date は同じ端末 TZ を使うため境界は整合する。
+ */
+export async function getScoreUpdateDays(
+  db: SQLiteDatabase,
+  taikoNo: string = SELF_TAIKO_NO,
+  limit?: number,
+): Promise<ScoreUpdateDay[]> {
+  const rows = await db.getAllAsync<{ day: string; count: number }>(
+    /* sql */ `
+      SELECT date(updated_at / 1000, 'unixepoch', 'localtime') AS day,
+             COUNT(DISTINCT song_number || '-' || level) AS count
+      FROM records
+      WHERE taiko_no = ? AND score_total IS NOT NULL AND updated_at > 0
+      GROUP BY day
+      ORDER BY day DESC
+      ${limit != null ? 'LIMIT ?' : ''}
+    `,
+    ...(limit != null ? [taikoNo, limit] : [taikoNo]),
+  );
+  return rows.map((r) => {
+    const [y, m, d] = r.day.split('-').map(Number);
+    const start = new Date(y, m - 1, d);
+    const end = new Date(y, m - 1, d + 1);
+    return { day: r.day, startMs: start.getTime(), endMs: end.getTime(), count: r.count };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// 期間の差分（SNS 出力用）
 // ---------------------------------------------------------------------------
 
 /**
- * 「今日の差分」一覧の 1 行。after = 現在の最新状態、before = 今日より前の最新状態。
- * before 系列が NULL の譜面は「本日が初記録（NEW）」を意味する。
+ * 「差分」一覧の 1 行。after = 期間終わりの最新状態、before = 期間始まりより前の最新状態。
+ * before 系列が NULL の譜面は「その期間が初記録（NEW）」を意味する。
  * crown/class は最新行（base）から、数値スコアは最新のスコア入り行（scored）から取る。
  */
 export interface TodayDiffRow {
@@ -247,36 +293,38 @@ export interface TodayDiffRow {
 }
 
 /**
- * sinceMs（今日 0:00 のエポック ms）以降に更新された各譜面について、
- * 今日より前の最新状態（before）と現在の最新状態（after）を並べて返す。
+ * [sinceMs, untilMs) に更新された各譜面について、since より前の最新状態（before）と
+ * until より前の最新状態（after）を並べて返す。任意の 1 日を指定すれば「その日の差分」、
+ * untilMs に翌日 0:00 を渡せば「今日の差分」になる（after = 実質グローバル最新）。
  * 既定は自分（taiko_no=''）。記録は追記専用のため、当日中に複数回更新しても
- * 「今日より前の最新」と「現在の最新」を比べることで当日トータルの伸びを表せる。
+ * 「その日の始まりの最新」と「その日の終わりの最新」を比べることで日トータルの伸びを表せる。
  */
-export async function getTodayDiffs(
+export async function getDiffsInRange(
   db: SQLiteDatabase,
   sinceMs: number,
+  untilMs: number,
   taikoNo: string = SELF_TAIKO_NO,
 ): Promise<TodayDiffRow[]> {
   const sql = /* sql */ `
     WITH
     today_charts AS (
       SELECT DISTINCT song_number, level FROM records
-      WHERE taiko_no = $taiko AND updated_at >= $since
+      WHERE taiko_no = $taiko AND updated_at >= $since AND updated_at < $until
     ),
     after_base AS (
       SELECT r.* FROM records r JOIN (
         SELECT song_number, level, MAX(updated_at) AS mx
-        FROM records WHERE taiko_no = $taiko GROUP BY song_number, level
+        FROM records WHERE taiko_no = $taiko AND updated_at < $until GROUP BY song_number, level
       ) m ON m.song_number = r.song_number AND m.level = r.level AND m.mx = r.updated_at
-      WHERE r.taiko_no = $taiko
+      WHERE r.taiko_no = $taiko AND r.updated_at < $until
     ),
     after_scored AS (
       SELECT r.* FROM records r JOIN (
         SELECT song_number, level, MAX(updated_at) AS mx
-        FROM records WHERE taiko_no = $taiko AND score_total IS NOT NULL
+        FROM records WHERE taiko_no = $taiko AND score_total IS NOT NULL AND updated_at < $until
         GROUP BY song_number, level
       ) m ON m.song_number = r.song_number AND m.level = r.level AND m.mx = r.updated_at
-      WHERE r.taiko_no = $taiko AND r.score_total IS NOT NULL
+      WHERE r.taiko_no = $taiko AND r.score_total IS NOT NULL AND r.updated_at < $until
     ),
     before_base AS (
       SELECT r.* FROM records r JOIN (
@@ -317,7 +365,7 @@ export async function getTodayDiffs(
       (COALESCE(asc_.score_total, 0) - COALESCE(bsc.score_total, 0)) DESC,
       tc.song_number ASC
   `;
-  return db.getAllAsync<TodayDiffRow>(sql, { $taiko: taikoNo, $since: sinceMs });
+  return db.getAllAsync<TodayDiffRow>(sql, { $taiko: taikoNo, $since: sinceMs, $until: untilMs });
 }
 
 // ---------------------------------------------------------------------------

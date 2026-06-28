@@ -15,7 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RecordDetailModal } from '@/components/RecordDetailModal';
 import { TierExportModal } from '@/components/TierExportModal';
-import { TodayDiffModal, startOfToday } from '@/components/TodayDiffModal';
+import { TodayDiffModal } from '@/components/TodayDiffModal';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import {
@@ -251,7 +251,7 @@ export default function RecordsScreen() {
             style={[styles.filterToggle, { backgroundColor: theme.backgroundSelected }]}
             onPress={() => setShowTodayDiff(true)}
           >
-            <ThemedText type="smallBold">今日の差分</ThemedText>
+            <ThemedText type="smallBold">差分</ThemedText>
           </Pressable>
           <Pressable
             style={[styles.filterToggle, { backgroundColor: theme.backgroundSelected }]}
@@ -428,7 +428,7 @@ export default function RecordsScreen() {
         <TierExportModal taikoNo={selectedTaikoNo} onClose={() => setShowTierExport(false)} />
       )}
       {showTodayDiff && (
-        <TodayDiffModal sinceMs={startOfToday()} onClose={() => setShowTodayDiff(false)} />
+        <TodayDiffModal taikoNo={selectedTaikoNo} onClose={() => setShowTodayDiff(false)} />
       )}
     </ThemedView>
   );
