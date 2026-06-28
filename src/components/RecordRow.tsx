@@ -2,6 +2,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import React from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
 
+import { GradientFill } from '@/components/GradientFill';
 import { ThemedText } from '@/components/themed-text';
 import {
   ClassImages,
@@ -34,10 +35,10 @@ export function RecordRow({
    */
   right?: { top: string; bottom?: string };
   /**
-   * 指定時はジャンル背景の代わりに、この 2 色の対角線分割を背景に使う。
-   * 「王冠とスコアが異なる曲」フォルダなどでクラウン色の対角分割を出す用途。
+   * 指定時はジャンル背景の代わりに、この対角グラデーション（colors / 任意 locations）を背景に使う。
+   * 「王冠とスコアが異なる曲」フォルダなどでクラウンの金属光沢グラデを出す用途。
    */
-  background?: { color1: string; color2: string };
+  background?: { colors: readonly string[]; locations?: readonly number[] };
 }) {
   const achievePct =
     row.total_notes != null && row.total_notes > 0
@@ -45,10 +46,8 @@ export function RecordRow({
       : '—';
   const fmt = (n: number | null) => (n != null ? n.toLocaleString() : '—');
 
-  // 背景色：background 指定時はその 2 色の対角分割、未指定ならジャンル背景。
-  const { color1, color2, isDual } = background
-    ? { color1: background.color1, color2: background.color2, isDual: true }
-    : resolveGenreColors(row.genre_ids);
+  // 背景色：background 未指定時のジャンル背景（対角分割 or 単色）。
+  const { color1, color2, isDual } = resolveGenreColors(row.genre_ids);
 
   // ソートキーに応じた rowRight 内容
   let rowRightTop: React.ReactNode;
@@ -141,8 +140,14 @@ export function RecordRow({
   return (
     <Pressable onPress={onPress}>
       <View style={styles.row}>
-        {/* ジャンル背景（対角線分割または単色） */}
-        {isDual ? (
+        {/* 背景：background 指定時はその対角グラデ、未指定はジャンル背景（対角分割 or 単色）。 */}
+        {background ? (
+          <GradientFill
+            colors={background.colors}
+            locations={background.locations}
+            style={StyleSheet.absoluteFill}
+          />
+        ) : isDual ? (
           <LinearGradient
             colors={[color1, color1, color2, color2]}
             locations={[0, 0.499, 0.501, 1]}

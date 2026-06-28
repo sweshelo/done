@@ -1,4 +1,3 @@
-import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
@@ -16,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AddSongsModal } from '@/components/folders/AddSongsModal';
 import { FavoriteSyncModal } from '@/components/folders/FavoriteSyncModal';
+import { GradientFill } from '@/components/GradientFill';
 import { RecordDetailModal } from '@/components/RecordDetailModal';
 import { RecordRow } from '@/components/RecordRow';
 import { ThemedText } from '@/components/themed-text';
@@ -27,8 +27,9 @@ import {
 } from '@/components/ui/SongSearchBar';
 import {
   ClassImages,
-  CrownColors,
   CrownImages,
+  crownGradient,
+  dualCrownGradient,
   GenreColors,
   LevelImages,
 } from '@/constants/taiko-colors';
@@ -143,10 +144,10 @@ export default function FoldersScreen() {
         type: 'folder';
         key: string;
         ref: FolderRef;
-        /** 単色背景。colors を指定した場合は無視。 */
+        /** 単色背景。gradient を指定した場合は無視。 */
         color?: string;
-        /** [color1, color2] を指定すると RecordRow と同じ対角線分割で背景描画する。 */
-        colors?: [string, string];
+        /** 指定すると対角の金属光沢グラデで背景描画する（クラウン状態色用）。 */
+        gradient?: { colors: readonly string[]; locations?: readonly number[] };
         subtitle?: string;
         onLong?: () => void;
       };
@@ -157,13 +158,13 @@ export default function FoldersScreen() {
     type: 'folder',
     key: 'almostFc',
     ref: { kind: 'almostFc', name: ALMOST_FC_NAME },
-    color: CrownColors.CLEAR,
+    gradient: { colors: crownGradient('CLEAR')! },
   });
   items.push({
     type: 'folder',
     key: 'almostDc',
     ref: { kind: 'almostDc', name: ALMOST_DC_NAME },
-    color: CrownColors.FULL_COMBO,
+    gradient: { colors: crownGradient('FULL_COMBO')! },
   });
   items.push({
     type: 'folder',
@@ -171,13 +172,13 @@ export default function FoldersScreen() {
     ref: { kind: 'recent', name: '最近スコアを更新した曲'},
     color: '#4cbfae'
   })
-  // 「王冠とスコアが異なる曲」：対象 0 件なら非表示。背景はクラウン色の対角分割。
+  // 「王冠とスコアが異なる曲」：対象 0 件なら非表示。背景はクラウン色の対角金属光沢グラデ。
   if (hasMismatchFc) {
     items.push({
       type: 'folder',
       key: 'mismatchFc',
       ref: { kind: 'mismatchFc', name: MISMATCH_FC_NAME },
-      colors: [CrownColors.CLEAR, CrownColors.FULL_COMBO],
+      gradient: dualCrownGradient('CLEAR', 'FULL_COMBO'),
     });
   }
   if (hasMismatchDc) {
@@ -185,7 +186,7 @@ export default function FoldersScreen() {
       type: 'folder',
       key: 'mismatchDc',
       ref: { kind: 'mismatchDc', name: MISMATCH_DC_NAME },
-      colors: [CrownColors.DONDAFUL_COMBO, CrownColors.FULL_COMBO],
+      gradient: dualCrownGradient('DONDAFUL_COMBO', 'FULL_COMBO'),
     });
   }
   items.push({
@@ -263,12 +264,10 @@ export default function FoldersScreen() {
             return (
               <Pressable onPress={() => setOpenFolder(item.ref)} onLongPress={item.onLong}>
                 <View style={styles.folderRow}>
-                  {item.colors ? (
-                    <LinearGradient
-                      colors={[item.colors[0], item.colors[0], item.colors[1], item.colors[1]]}
-                      locations={[0, 0.499, 0.501, 1]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
+                  {item.gradient ? (
+                    <GradientFill
+                      colors={item.gradient.colors}
+                      locations={item.gradient.locations}
                       style={StyleSheet.absoluteFill}
                     />
                   ) : (
@@ -350,12 +349,12 @@ function FolderDetailModal({ folder, onClose }: { folder: FolderRef; onClose: ()
     folder.kind === 'mismatchDc';
   // recent は更新日時を主表示、その他は right で上書きするため任意（score）。
   const smartSortKey: RecordSortKey = folder.kind === 'recent' ? 'updatedAt' : 'score';
-  // 「王冠とスコアが異なる曲」はクラウン色の対角分割を背景にする。
+  // 「王冠とスコアが異なる曲」はクラウン色の対角金属光沢グラデを背景にする。
   const smartBackground =
     folder.kind === 'mismatchFc'
-      ? { color1: CrownColors.CLEAR, color2: CrownColors.FULL_COMBO }
+      ? dualCrownGradient('CLEAR', 'FULL_COMBO')
       : folder.kind === 'mismatchDc'
-        ? { color1: CrownColors.DONDAFUL_COMBO, color2: CrownColors.FULL_COMBO }
+        ? dualCrownGradient('DONDAFUL_COMBO', 'FULL_COMBO')
         : undefined;
   // フォルダ種別ごとの右側表示（top=太字／bottom=グレー）。recent は sortKey に委ねる。
   const smartRight = (item: RecordListRow): { top: string; bottom?: string } | undefined => {

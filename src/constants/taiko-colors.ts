@@ -1,6 +1,6 @@
 import type { ImageSourcePropType } from 'react-native';
 
-import type { Class, Level, Crown } from '@/types';
+import type { Class, Crown, Level } from '@/types';
 
 /**
  * 太鼓固有のカラースキーム。
@@ -24,6 +24,48 @@ export const GLOWING_CROWNS: Crown[] = ['CLEAR', 'FULL_COMBO', 'DONDAFUL_COMBO']
 
 /** ドンダフルは虹色グラデーション表現も可（演出用） */
 export const DONDAFUL_GRADIENT = ['#ff5f6d', '#ffc371', '#f3f34c', '#5cff6b', '#5ce1ff', '#f170ff'];
+
+/**
+ * 金属光沢グラデーション（光→ベース→影→光のスイープで光沢を表現）。
+ * クラウン状態色を「面」として塗る箇所で単色の代わりに使う。値は初期値（調整可）。
+ */
+/** 金（フルコンボ） */
+export const GOLD_GRADIENT = ['#ffea83', '#F3C621', '#A9810F', '#F3C621', '#FFF1A8'] as const;
+/** 銀（クリア）— 濃色テキストの可読性のため明るめ寄り */
+export const SILVER_GRADIENT = ['#b6b6b6', '#767676', '#e4e4e4', '#838383'] as const;
+
+/** 金属光沢グラデを持つ Crown のマップ。全良は虹色グラデ。 */
+export const CrownGradients: Partial<Record<Crown, readonly string[]>> = {
+  CLEAR: SILVER_GRADIENT,
+  FULL_COMBO: GOLD_GRADIENT,
+  DONDAFUL_COMBO: DONDAFUL_GRADIENT,
+};
+
+/** 単一クラウンの金属光沢グラデ stops。グラデ非対象なら null。 */
+export function crownGradient(crown: Crown): readonly string[] | null {
+  return CrownGradients[crown] ?? null;
+}
+
+/**
+ * 2 クラウンを対角（start{0,0}/end{1,1}）に並べた合成グラデを返す。
+ * group1 を [0, 0.49]、group2 を [0.51, 1] に割り当て、中央でクリスプに分割する。
+ * グラデ非対象のクラウンは単色（CrownColors）で 1 stop 扱いにする。
+ */
+export function dualCrownGradient(
+  c1: Crown,
+  c2: Crown,
+): { colors: string[]; locations: number[] } {
+  const g1 = (CrownGradients[c1] ?? [CrownColors[c1]]) as readonly string[];
+  const g2 = (CrownGradients[c2] ?? [CrownColors[c2]]) as readonly string[];
+  const span = (stops: readonly string[], start: number, end: number): number[] =>
+    stops.length === 1
+      ? [start]
+      : stops.map((_, i) => start + ((end - start) * i) / (stops.length - 1));
+  return {
+    colors: [...g1, ...g2],
+    locations: [...span(g1, 0, 0.49), ...span(g2, 0.51, 1)],
+  };
+}
 
 /**
  * 難易度（Level）背景色。暫定。wikiwiki 確定後に転記する。

@@ -1,8 +1,8 @@
-import { LinearGradient } from 'expo-linear-gradient';
 import { forwardRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { LevelColors, DONDAFUL_GRADIENT } from '@/constants/taiko-colors';
+import { GradientFill } from '@/components/GradientFill';
+import { CrownGradients, LevelColors } from '@/constants/taiko-colors';
 import { Spacing } from '@/constants/theme';
 import type { Level, Crown } from '@/types';
 
@@ -23,14 +23,12 @@ interface Props {
   tableWidth: number;
 }
 
+// クリア/フルコンボ/全良は CrownGradients（金属光沢グラデ）で塗るため、ここは
+// プレイ済み/未プレイ/記録なしの単色フォールバックのみ扱う。
 function crownToBg(crown: Crown | null): string {
   switch (crown) {
-    case 'DONDAFUL_COMBO':
-      return '#f170ff'; // 実際は LinearGradient を使用
-    case 'FULL_COMBO':
-      return '#f3c621';
-    case 'CLEAR':
-      return '#e3f6ff';
+    case 'PLAYED':
+      return '#888';
     default:
       return '#8b8b8b'; // 未プレイ / 記録なし
   }
@@ -87,16 +85,13 @@ function SongCell({ row, width }: { row: TierTableRow; width: number }) {
     </Text>
   );
 
-  if (row.crown === 'DONDAFUL_COMBO') {
+  // クリア/フルコンボ/全良は金属光沢グラデ（銀/金/虹）で塗る。それ以外は単色。
+  const gradient = row.crown ? CrownGradients[row.crown] : null;
+  if (gradient) {
     return (
-      <LinearGradient
-        colors={DONDAFUL_GRADIENT as [string, string, ...string[]]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={cellStyle}
-      >
+      <GradientFill colors={gradient} style={cellStyle}>
         {textEl}
-      </LinearGradient>
+      </GradientFill>
     );
   }
 
