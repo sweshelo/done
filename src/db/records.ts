@@ -60,9 +60,15 @@ export function rowToRecord(row: RecordRow): DoneRecord {
 }
 
 function safeParseOptions(json: string): string[] {
+  return parseOptionList(json);
+}
+
+/** options 列の JSON 文字列を演奏オプション画像 src の配列に変換する（壊れていれば空配列）。 */
+export function parseOptionList(json: string | null | undefined): string[] {
+  if (!json) return [];
   try {
     const v = JSON.parse(json);
-    return Array.isArray(v) ? v : [];
+    return Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string') : [];
   } catch {
     return [];
   }
@@ -412,6 +418,8 @@ export interface RecordListRow {
   ok: number | null;
   ng: number | null;
   pound: number | null;
+  /** カンマ区切りでなく JSON 配列文字列。演奏オプション画像 src（[] は未使用）。 */
+  options?: string | null;
   star: number | null;
   tier: string | null;
   updated_at: number;

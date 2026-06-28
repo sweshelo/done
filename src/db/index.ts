@@ -18,6 +18,7 @@ export {
   getScoreUpdateDays,
   rowToRecord,
   resolveTargetsByTitle,
+  parseOptionList,
   type RecordFilter,
   type RecordSort,
   type RecordSortKey,

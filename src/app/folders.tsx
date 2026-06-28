@@ -41,6 +41,7 @@ import {
   getFolderSongNumbers,
   getSmartFolderRecords,
   listManualFolders,
+  parseOptionList,
   renameFolder,
 } from '@/db';
 import type { FolderRef, FolderSongDetail, ManualFolderRow } from '@/db/folders';
@@ -54,6 +55,8 @@ const ALMOST_FC_NAME = 'もうすぐフルコンボ';
 const ALMOST_DC_NAME = 'もうすぐドンだフルコンボ';
 const MISMATCH_FC_NAME = '王冠とスコアが異なる曲（フルコンボ）';
 const MISMATCH_DC_NAME = '王冠とスコアが異なる曲（ドンダフルコンボ）';
+const OPTIONS_NAME = '自己ベストで演奏オプションを使用した曲';
+const OPTIONS_FOLDER_COLOR = '#6f7bd6';
 /** ドンだーひろばのお気に入りの曲の上限（song_no_1 .. song_no_30）。 */
 const FAVORITE_LIMIT = 30;
 
@@ -67,6 +70,8 @@ export default function FoldersScreen() {
   // 「王冠とスコアが異なる曲」フォルダは対象 0 件のとき一覧に出さないため、件数有無を保持する。
   const [hasMismatchFc, setHasMismatchFc] = useState(false);
   const [hasMismatchDc, setHasMismatchDc] = useState(false);
+  // 「自己ベストで演奏オプションを使用した曲」も対象 0 件のとき一覧に出さない。
+  const [hasOptions, setHasOptions] = useState(false);
 
   // 手動フォルダ名の作成 / 改名モーダル
   const [editing, setEditing] = useState<
@@ -75,16 +80,18 @@ export default function FoldersScreen() {
   const [nameInput, setNameInput] = useState('');
 
   const load = useCallback(async () => {
-    const [genreRows, manual, mismatchFc, mismatchDc] = await Promise.all([
+    const [genreRows, manual, mismatchFc, mismatchDc, options] = await Promise.all([
       db.getAllAsync<{ id: string; title: string }>('SELECT id, title FROM genres ORDER BY id'),
       listManualFolders(db),
       getSmartFolderRecords(db, { kind: 'mismatchFc', name: MISMATCH_FC_NAME }),
       getSmartFolderRecords(db, { kind: 'mismatchDc', name: MISMATCH_DC_NAME }),
+      getSmartFolderRecords(db, { kind: 'options', name: OPTIONS_NAME }),
     ]);
     setGenres(genreRows);
     setManualFolders(manual);
     setHasMismatchFc(mismatchFc.length > 0);
     setHasMismatchDc(mismatchDc.length > 0);
+    setHasOptions(options.length > 0);
   }, [db]);
 
   useFocusEffect(
@@ -187,6 +194,15 @@ export default function FoldersScreen() {
       key: 'mismatchDc',
       ref: { kind: 'mismatchDc', name: MISMATCH_DC_NAME },
       gradient: dualCrownGradient('DONDAFUL_COMBO', 'FULL_COMBO'),
+    });
+  }
+  // 「自己ベストで演奏オプションを使用した曲」：対象 0 件なら非表示。
+  if (hasOptions) {
+    items.push({
+      type: 'folder',
+      key: 'options',
+      ref: { kind: 'options', name: OPTIONS_NAME },
+      color: OPTIONS_FOLDER_COLOR,
     });
   }
   items.push({
@@ -346,7 +362,8 @@ function FolderDetailModal({ folder, onClose }: { folder: FolderRef; onClose: ()
     folder.kind === 'almostDc' ||
     folder.kind === 'recent' ||
     folder.kind === 'mismatchFc' ||
-    folder.kind === 'mismatchDc';
+    folder.kind === 'mismatchDc' ||
+    folder.kind === 'options';
   // recent は更新日時を主表示、その他は right で上書きするため任意（score）。
   const smartSortKey: RecordSortKey = folder.kind === 'recent' ? 'updatedAt' : 'score';
   // 「王冠とスコアが異なる曲」はクラウン色の対角金属光沢グラデを背景にする。
@@ -508,9 +525,11 @@ function FolderDetailModal({ folder, onClose }: { folder: FolderRef; onClose: ()
                   ? '読み込み中…'
                   : folder.kind === 'recent'
                     ? '最近スコアを更新した曲がありません。'
-                    : folder.kind === 'mismatchFc' || folder.kind === 'mismatchDc'
-                      ? '条件に合う曲がありません。'
-                      : '条件に合う曲がありません。設定の閾値・対象難易度を確認してください。'}
+                    : folder.kind === 'options'
+                      ? '自己ベストで演奏オプションを使用した曲がありません。'
+                      : folder.kind === 'mismatchFc' || folder.kind === 'mismatchDc'
+                        ? '条件に合う曲がありません。'
+                        : '条件に合う曲がありません。設定の閾値・対象難易度を確認してください。'}
               </ThemedText>
             }
             renderItem={({ item }) => (
@@ -519,6 +538,7 @@ function FolderDetailModal({ folder, onClose }: { folder: FolderRef; onClose: ()
                 sortKey={smartSortKey}
                 right={smartRight(item)}
                 background={smartBackground}
+                optionSrcs={folder.kind === 'options' ? parseOptionList(item.options) : undefined}
                 onPress={() => setSelected({ song_number: item.song_number, level: item.level })}
               />
             )}

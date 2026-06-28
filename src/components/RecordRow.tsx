@@ -10,6 +10,7 @@ import {
   CrownImages,
   LevelColors,
   LevelLabels,
+  optionImageUri,
   resolveGenreColors,
 } from '@/constants/taiko-colors';
 import { Spacing } from '@/constants/theme';
@@ -25,6 +26,7 @@ export function RecordRow({
   onPress,
   right,
   background,
+  optionSrcs,
 }: {
   row: RecordListRow;
   sortKey: RecordSortKey;
@@ -39,6 +41,11 @@ export function RecordRow({
    * 「王冠とスコアが異なる曲」フォルダなどでクラウンの金属光沢グラデを出す用途。
    */
   background?: { colors: readonly string[]; locations?: readonly number[] };
+  /**
+   * 指定時は曲名・難易度の下に、演奏オプションのアイコン（本家画像 src の配列）を並べる。
+   * 「自己ベストで演奏オプションを使用した曲」フォルダ用。
+   */
+  optionSrcs?: string[];
 }) {
   const achievePct =
     row.total_notes != null && row.total_notes > 0
@@ -178,6 +185,18 @@ export function RecordRow({
             {row.star != null ? ` ★${row.star}` : ''}
             {row.tier ? ` / ${row.tier}` : ''}
           </ThemedText>
+          {optionSrcs && optionSrcs.length > 0 && (
+            <View style={styles.optionIcons}>
+              {optionSrcs.map((src) => (
+                <Image
+                  key={src}
+                  source={{ uri: optionImageUri(src) }}
+                  style={styles.optionIcon}
+                  resizeMode="contain"
+                />
+              ))}
+            </View>
+          )}
         </View>
 
         <View style={styles.rowRight}>
@@ -206,4 +225,6 @@ const styles = StyleSheet.create({
   rowRight: { alignItems: 'flex-end', gap: 2, flexShrink: 0 },
   rowRightBottomRow: { flexDirection: 'row', alignItems: 'center', gap: 0 },
   classIcon: { width: 24, height: 24 },
+  optionIcons: { flexDirection: 'row', flexWrap: 'wrap', gap: 2, marginTop: 2 },
+  optionIcon: { width: 20, height: 20, borderRadius: 3 },
 });

@@ -30,6 +30,7 @@ export type FolderRef =
   | { kind: 'recent', name: string }
   | { kind: 'mismatchFc'; name: string }
   | { kind: 'mismatchDc'; name: string }
+  | { kind: 'options'; name: string }
   | { kind: 'manual'; id: number; name: string }
   | { kind: 'star'; star: number; name: string };
 
@@ -228,6 +229,16 @@ export async function getFolderSongs(
         crown: r.crown,
       }));
     }
+    case 'options': {
+      // 自己ベストで演奏オプションを使用した曲。お気に入り反映用に song_number/level/crown を返す。
+      const rows = await queryBestWithOptionsRows(db);
+      return rows.map((r) => ({
+        song_number: r.song_number,
+        title: r.song_title,
+        level: r.level,
+        crown: r.crown,
+      }));
+    }
     case 'recent': {
       // 直近 RECENT_UPDATE_DAYS 日分のスコア更新日に更新があった曲を新しい順で集める。
       const days = await getScoreUpdateDays(db, SELF_TAIKO_NO, RECENT_UPDATE_DAYS);
@@ -345,7 +356,58 @@ async function queryMismatchRows(
 }
 
 /**
- * スマートフォルダ（もうすぐFC / もうすぐDC / 最近スコアを更新した曲 / 王冠とスコアが異なる曲FC・DC）の
+ * 「自己ベストで演奏オプションを使用した曲」フォルダの中身を RecordListRow で返す。
+ * 各譜面の自己ベスト（最高スコア）行のリザルトに演奏オプション（options）が記録されている譜面を集める。
+ * 自己ベスト行は譜面ごとの MAX(score_total) 行（同点は最新優先で1行に確定）から取り、
+ * 表示用の王冠/極/更新日時は記録タブと同様に最新行から取る。難易度は限定しない（全難易度対象）。
+ * options 列（JSON 配列文字列）も返し、行にオプションアイコンを表示できるようにする。
+ */
+async function queryBestWithOptionsRows(db: SQLiteDatabase): Promise<RecordListRow[]> {
+  return db.getAllAsync<RecordListRow>(
+    /* sql */ `
+      WITH best AS (
+        SELECT * FROM (
+          SELECT r.*, ROW_NUMBER() OVER (
+            PARTITION BY r.song_number, r.level
+            ORDER BY r.score_total DESC, r.updated_at DESC, r.id DESC
+          ) AS rn
+          FROM records r
+          WHERE r.taiko_no = ? AND r.score_total IS NOT NULL
+        ) WHERE rn = 1
+      ),
+      latest AS (
+        SELECT r.* FROM records r
+        JOIN (
+          SELECT song_number, level, MAX(updated_at) AS mx
+          FROM records WHERE taiko_no = ? GROUP BY song_number, level
+        ) m ON m.song_number = r.song_number AND m.level = r.level AND m.mx = r.updated_at
+        WHERE r.taiko_no = ?
+      )
+      SELECT
+        r.song_number, s.title AS song_title, r.level,
+        l.crown, l.class, r.score_total, r.good, r.ok, r.ng, r.pound, r.options,
+        lv.star AS star, lv.tier AS tier, l.updated_at,
+        ${COMPUTED_COLS},
+        (SELECT GROUP_CONCAT(gs.genre_id) FROM genre_songs gs
+         WHERE gs.song_number = r.song_number) AS genre_ids
+      FROM best r
+      JOIN latest l ON l.song_number = r.song_number AND l.level = r.level
+      JOIN songs s ON s.number = r.song_number
+      LEFT JOIN charts lv ON lv.song_number = r.song_number AND lv.level = r.level
+      WHERE r.options IS NOT NULL AND r.options != '' AND r.options != '[]'
+      ORDER BY
+        CASE WHEN lv.star IS NULL THEN 1 ELSE 0 END ASC, lv.star DESC,
+        r.score_total DESC, s.title ASC
+    `,
+    SELF_TAIKO_NO,
+    SELF_TAIKO_NO,
+    SELF_TAIKO_NO,
+  );
+}
+
+/**
+ * スマートフォルダ（もうすぐFC / もうすぐDC / 最近スコアを更新した曲 / 王冠とスコアが異なる曲FC・DC /
+ * 自己ベストで演奏オプションを使用した曲）の
  * 中身を、記録一覧と同じ RecordListRow（譜面=song×level 単位）で返す。記録タブと同じ Row で表示する用途。
  * almost は完成に近い順（残数 col 昇順）、recent は更新日時の新しい順で並べる。
  */
@@ -355,6 +417,10 @@ export async function getSmartFolderRecords(
 ): Promise<RecordListRow[]> {
   if (ref.kind === 'mismatchFc' || ref.kind === 'mismatchDc') {
     return queryMismatchRows(db, ref.kind);
+  }
+
+  if (ref.kind === 'options') {
+    return queryBestWithOptionsRows(db);
   }
 
   if (ref.kind === 'recent') {
