@@ -1,6 +1,6 @@
 import { useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useCallback, useState } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import {
   Alert,
   FlatList,
@@ -16,8 +16,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AddSongsModal } from '@/components/folders/AddSongsModal';
 import { FavoriteSyncModal } from '@/components/folders/FavoriteSyncModal';
 import { GradientFill } from '@/components/GradientFill';
+import { OptionIcons } from '@/components/OptionIcons';
 import { RecordDetailModal } from '@/components/RecordDetailModal';
-import { RecordRow } from '@/components/RecordRow';
+import { RecordRow, RecordRowStat } from '@/components/RecordRow';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import {
@@ -45,7 +46,7 @@ import {
   renameFolder,
 } from '@/db';
 import type { FolderRef, FolderSongDetail, ManualFolderRow } from '@/db/folders';
-import type { RecordListRow, RecordSortKey } from '@/db/records';
+import type { RecordListRow } from '@/db/records';
 import { useTheme } from '@/hooks/use-theme';
 import { SELF_TAIKO_NO, type Level } from '@/types';
 
@@ -364,8 +365,6 @@ function FolderDetailModal({ folder, onClose }: { folder: FolderRef; onClose: ()
     folder.kind === 'mismatchFc' ||
     folder.kind === 'mismatchDc' ||
     folder.kind === 'options';
-  // recent は更新日時を主表示、その他は right で上書きするため任意（score）。
-  const smartSortKey: RecordSortKey = folder.kind === 'recent' ? 'updatedAt' : 'score';
   // 「王冠とスコアが異なる曲」はクラウン色の対角金属光沢グラデを背景にする。
   const smartBackground =
     folder.kind === 'mismatchFc'
@@ -373,20 +372,35 @@ function FolderDetailModal({ folder, onClose }: { folder: FolderRef; onClose: ()
       : folder.kind === 'mismatchDc'
         ? dualCrownGradient('DONDAFUL_COMBO', 'FULL_COMBO')
         : undefined;
-  // フォルダ種別ごとの右側表示（top=太字／bottom=グレー）。recent は sortKey に委ねる。
-  const smartRight = (item: RecordListRow): { top: string; bottom?: string } | undefined => {
+  // フォルダ種別ごとの右側表示。options はスコア＋オプションアイコン、その他は残数/可不可など。
+  const smartRowRight = (item: RecordListRow): ReactNode => {
     const score = item.score_total != null ? item.score_total.toLocaleString() : '—';
     switch (folder.kind) {
       case 'almostFc':
-        return { top: `残り不可 ${item.ng ?? '—'}`, bottom: score };
+        return <RecordRowStat top={`残り不可 ${item.ng ?? '—'}`} bottom={score} />;
       case 'almostDc':
-        return { top: `残り可 ${item.ok ?? '—'}`, bottom: score };
+        return <RecordRowStat top={`残り可 ${item.ok ?? '—'}`} bottom={score} />;
       case 'mismatchFc':
-        return { top: `不可 ${item.ng ?? '—'}`, bottom: score };
+        return <RecordRowStat top={`不可 ${item.ng ?? '—'}`} bottom={score} />;
       case 'mismatchDc':
-        return { top: `可 ${item.ok ?? '—'}`, bottom: `不可 ${item.ng ?? '—'}` };
+        return <RecordRowStat top={`可 ${item.ok ?? '—'}`} bottom={`不可 ${item.ng ?? '—'}`} />;
+      case 'options':
+        return (
+          <RecordRowStat top={score} bottom={<OptionIcons srcs={parseOptionList(item.options)} />} />
+        );
+      case 'recent':
+        return (
+          <RecordRowStat
+            top={
+              item.updated_at === 0
+                ? '初期化'
+                : new Date(item.updated_at).toLocaleDateString('ja-JP')
+            }
+            bottom={score}
+          />
+        );
       default:
-        return undefined;
+        return <RecordRowStat top={score} />;
     }
   };
 
@@ -535,10 +549,8 @@ function FolderDetailModal({ folder, onClose }: { folder: FolderRef; onClose: ()
             renderItem={({ item }) => (
               <RecordRow
                 row={item}
-                sortKey={smartSortKey}
-                right={smartRight(item)}
+                rowRight={smartRowRight(item)}
                 background={smartBackground}
-                optionSrcs={folder.kind === 'options' ? parseOptionList(item.options) : undefined}
                 onPress={() => setSelected({ song_number: item.song_number, level: item.level })}
               />
             )}

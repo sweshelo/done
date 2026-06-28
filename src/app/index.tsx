@@ -1,8 +1,9 @@
 import { useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
   FlatList,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,7 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RecordDetailModal } from '@/components/RecordDetailModal';
-import { RecordRow } from '@/components/RecordRow';
+import { RecordRow, RecordRowStat } from '@/components/RecordRow';
 import { TierExportModal } from '@/components/TierExportModal';
 import { TodayDiffModal } from '@/components/TodayDiffModal';
 import { ThemedText } from '@/components/themed-text';
@@ -23,7 +24,7 @@ import {
   toLevels,
   type DifficultyKey,
 } from '@/components/ui/DifficultyFilter';
-import { ClassLabels, CrownColors } from '@/constants/taiko-colors';
+import { ClassImages, ClassLabels, CrownColors } from '@/constants/taiko-colors';
 import { Spacing } from '@/constants/theme';
 import { buildRecordQuery, listPlayers } from '@/db';
 import type { RecordFilter, RecordSort, RecordSortKey, RecordListRow } from '@/db/records';
@@ -54,6 +55,89 @@ const SORT_KEYS: RecordSortKey[] = [
   'tier',
   'closeToSelf',
 ];
+
+const fmtNum = (n: number | null) => (n != null ? n.toLocaleString() : '—');
+
+/** ソートキーに応じた記録行の右側表示。 */
+function renderRowRight(row: RecordListRow, sortKey: RecordSortKey): ReactNode {
+  const achievePct =
+    row.total_notes != null && row.total_notes > 0
+      ? ((row.achievement ?? 0) * 100).toFixed(2)
+      : '—';
+  switch (sortKey) {
+    case 'score':
+      return (
+        <RecordRowStat
+          top={fmtNum(row.score_total)}
+          bottom={
+            <View style={styles.rowRightBottomRow}>
+              <ThemedText type="small" themeColor="textSecondary">
+                {achievePct !== '—' ? `${achievePct}%` : '—'}
+              </ThemedText>
+              {ClassImages[row.class] && (
+                <Image
+                  source={ClassImages[row.class]}
+                  style={styles.classIcon}
+                  resizeMode="contain"
+                />
+              )}
+            </View>
+          }
+        />
+      );
+    case 'closeToSelf': {
+      // 自分とのスコア差分を主表示にする（自分の記録が無い譜面は差分なし）
+      const diff =
+        row.score_total != null && row.self_score != null ? row.score_total - row.self_score : null;
+      return (
+        <RecordRowStat
+          top={diff != null ? `${diff >= 0 ? '+' : ''}${diff.toLocaleString()}` : '—'}
+          bottom={fmtNum(row.score_total)}
+        />
+      );
+    }
+    case 'baseScore':
+      return (
+        <RecordRowStat
+          top={fmtNum(row.base_score)}
+          bottom={
+            row.score_total != null && row.base_score != null
+              ? `(+ ${(row.score_total - row.base_score).toLocaleString()})`
+              : '—'
+          }
+        />
+      );
+    case 'achievement':
+      return (
+        <RecordRowStat
+          top={achievePct !== '—' ? `${achievePct}%` : '—'}
+          bottom={
+            row.total_notes != null && row.total_notes > 0
+              ? `${row.good} / ${row.total_notes}`
+              : '—'
+          }
+        />
+      );
+    case 'updatedAt':
+      return (
+        <RecordRowStat
+          top={
+            row.updated_at === 0 ? '初期化' : new Date(row.updated_at).toLocaleDateString('ja-JP')
+          }
+          bottom={fmtNum(row.score_total)}
+        />
+      );
+    default:
+      return (
+        <RecordRowStat
+          top={fmtNum(row.score_total)}
+          bottom={`${achievePct !== '—' ? `${achievePct}%` : '—'}${
+            row.total_notes != null && row.total_notes > 0 ? ` / ${row.total_notes}` : ''
+          }`}
+        />
+      );
+  }
+}
 
 /** クリア王冠（記録画面では NO_PLAY は除く） */
 const CROWN_OPTIONS: Crown[] = ['PLAYED', 'CLEAR', 'FULL_COMBO', 'DONDAFUL_COMBO'];
@@ -376,7 +460,7 @@ export default function RecordsScreen() {
             </ThemedText>
           }
           renderItem={({ item }) => (
-            <RecordRow row={item} sortKey={sortKey} onPress={() => setSelectedRecord({ song_number: item.song_number, level: item.level })} />
+            <RecordRow row={item} rowRight={renderRowRight(item, sortKey)} onPress={() => setSelectedRecord({ song_number: item.song_number, level: item.level })} />
           )}
         />
       </SafeAreaView>
@@ -463,6 +547,9 @@ function SortChip({
 const styles = StyleSheet.create({
   container: { flex: 1 },
   safe: { flex: 1, paddingHorizontal: Spacing.three, gap: Spacing.one },
+
+  rowRightBottomRow: { flexDirection: 'row', alignItems: 'center', gap: 0 },
+  classIcon: { width: 24, height: 24 },
 
   headerRow: {
     flexDirection: 'row',

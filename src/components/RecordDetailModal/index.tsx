@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 
+import { OptionIcons } from '@/components/OptionIcons';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import {
@@ -20,7 +21,6 @@ import {
   CrownImages,
   LevelColors,
   LevelLabels,
-  optionImageUri,
 } from '@/constants/taiko-colors';
 import { Spacing } from '@/constants/theme';
 import { addSongToFolder, getFoldersForSong, listManualFolders, removeSongFromFolder } from '@/db';
@@ -264,16 +264,7 @@ export function RecordDetailModal({ songNumber, level, taikoNo, onClose }: Props
                 <ThemedText type="small" themeColor="textSecondary">
                   オプション
                 </ThemedText>
-                <View style={styles.optionIcons}>
-                  {options.map((src) => (
-                    <Image
-                      key={src}
-                      source={{ uri: optionImageUri(src) }}
-                      style={styles.optionIcon}
-                      resizeMode="contain"
-                    />
-                  ))}
-                </View>
+                <OptionIcons srcs={options} size={28} />
               </View>
             )}
           </View>
@@ -613,8 +604,6 @@ const styles = StyleSheet.create({
   },
 
   optionsBlock: { gap: Spacing.one },
-  optionIcons: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.one },
-  optionIcon: { width: 28, height: 28, borderRadius: 4 },
 
   chart: {
     height: CHART_HEIGHT,
