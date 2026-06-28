@@ -22,16 +22,22 @@ export function RecordRow({
   row,
   sortKey,
   onPress,
-  remaining,
+  right,
+  background,
 }: {
   row: RecordListRow;
   sortKey: RecordSortKey;
   onPress: () => void;
   /**
-   * 指定時は sortKey に依らず、右側に FC/DC までの残数を表示する（もうすぐフォルダ用）。
-   * label は「可」/「不可」、count は残り数。
+   * 指定時は sortKey に依らず、右側の主表示（top=太字）と副表示（bottom=グレー）を上書きする。
+   * もうすぐフォルダ（残数）や「王冠とスコアが異なる曲」（可/不可の数）などフォルダ固有の表示用。
    */
-  remaining?: { label: string; count: number | null };
+  right?: { top: string; bottom?: string };
+  /**
+   * 指定時はジャンル背景の代わりに、この 2 色の対角線分割を背景に使う。
+   * 「王冠とスコアが異なる曲」フォルダなどでクラウン色の対角分割を出す用途。
+   */
+  background?: { color1: string; color2: string };
 }) {
   const achievePct =
     row.total_notes != null && row.total_notes > 0
@@ -39,24 +45,22 @@ export function RecordRow({
       : '—';
   const fmt = (n: number | null) => (n != null ? n.toLocaleString() : '—');
 
-  // ジャンル背景色の計算
-  const { color1, color2, isDual } = resolveGenreColors(row.genre_ids);
+  // 背景色：background 指定時はその 2 色の対角分割、未指定ならジャンル背景。
+  const { color1, color2, isDual } = background
+    ? { color1: background.color1, color2: background.color2, isDual: true }
+    : resolveGenreColors(row.genre_ids);
 
   // ソートキーに応じた rowRight 内容
   let rowRightTop: React.ReactNode;
   let rowRightBottom: React.ReactNode;
-  if (remaining) {
-    // もうすぐフォルダ：残数を主表示、スコアを副表示にする。
-    rowRightTop = (
-      <ThemedText type="smallBold">
-        残り{remaining.label} {remaining.count ?? '—'}
-      </ThemedText>
-    );
-    rowRightBottom = (
+  if (right) {
+    // フォルダ固有の右側表示（残数・可/不可の数など）。
+    rowRightTop = <ThemedText type="smallBold">{right.top}</ThemedText>;
+    rowRightBottom = right.bottom ? (
       <ThemedText type="small" themeColor="textSecondary">
-        {fmt(row.score_total)}
+        {right.bottom}
       </ThemedText>
-    );
+    ) : null;
   } else {
   switch (sortKey) {
     case 'score':

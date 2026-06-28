@@ -1,3 +1,4 @@
+import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
@@ -50,6 +51,8 @@ const GENRE_FALLBACK_COLOR = '#212225';
 const STAR_FOLDER_COLOR = '#ec73c6';
 const ALMOST_FC_NAME = 'もうすぐフルコンボ';
 const ALMOST_DC_NAME = 'もうすぐドンだフルコンボ';
+const MISMATCH_FC_NAME = '王冠とスコアが異なる曲（フルコンボ）';
+const MISMATCH_DC_NAME = '王冠とスコアが異なる曲（ドンダフルコンボ）';
 /** ドンだーひろばのお気に入りの曲の上限（song_no_1 .. song_no_30）。 */
 const FAVORITE_LIMIT = 30;
 
@@ -60,6 +63,9 @@ export default function FoldersScreen() {
   const [genres, setGenres] = useState<{ id: string; title: string }[]>([]);
   const [manualFolders, setManualFolders] = useState<ManualFolderRow[]>([]);
   const [openFolder, setOpenFolder] = useState<FolderRef | null>(null);
+  // 「王冠とスコアが異なる曲」フォルダは対象 0 件のとき一覧に出さないため、件数有無を保持する。
+  const [hasMismatchFc, setHasMismatchFc] = useState(false);
+  const [hasMismatchDc, setHasMismatchDc] = useState(false);
 
   // 手動フォルダ名の作成 / 改名モーダル
   const [editing, setEditing] = useState<
@@ -68,12 +74,16 @@ export default function FoldersScreen() {
   const [nameInput, setNameInput] = useState('');
 
   const load = useCallback(async () => {
-    const [genreRows, manual] = await Promise.all([
+    const [genreRows, manual, mismatchFc, mismatchDc] = await Promise.all([
       db.getAllAsync<{ id: string; title: string }>('SELECT id, title FROM genres ORDER BY id'),
       listManualFolders(db),
+      getSmartFolderRecords(db, { kind: 'mismatchFc', name: MISMATCH_FC_NAME }),
+      getSmartFolderRecords(db, { kind: 'mismatchDc', name: MISMATCH_DC_NAME }),
     ]);
     setGenres(genreRows);
     setManualFolders(manual);
+    setHasMismatchFc(mismatchFc.length > 0);
+    setHasMismatchDc(mismatchDc.length > 0);
   }, [db]);
 
   useFocusEffect(
@@ -129,7 +139,17 @@ export default function FoldersScreen() {
   // スマートフォルダ + 手動フォルダを単一リストに並べる
   type ListItem =
     | { type: 'header'; key: string; label: string; action?: () => void; actionLabel?: string }
-    | { type: 'folder'; key: string; ref: FolderRef; color: string; subtitle?: string; onLong?: () => void };
+    | {
+        type: 'folder';
+        key: string;
+        ref: FolderRef;
+        /** 単色背景。colors を指定した場合は無視。 */
+        color?: string;
+        /** [color1, color2] を指定すると RecordRow と同じ対角線分割で背景描画する。 */
+        colors?: [string, string];
+        subtitle?: string;
+        onLong?: () => void;
+      };
 
   const items: ListItem[] = [];
   items.push({ type: 'header', key: 'h-smart', label: 'スマートフォルダ' });
@@ -151,6 +171,23 @@ export default function FoldersScreen() {
     ref: { kind: 'recent', name: '最近スコアを更新した曲'},
     color: '#4cbfae'
   })
+  // 「王冠とスコアが異なる曲」：対象 0 件なら非表示。背景はクラウン色の対角分割。
+  if (hasMismatchFc) {
+    items.push({
+      type: 'folder',
+      key: 'mismatchFc',
+      ref: { kind: 'mismatchFc', name: MISMATCH_FC_NAME },
+      colors: [CrownColors.CLEAR, CrownColors.FULL_COMBO],
+    });
+  }
+  if (hasMismatchDc) {
+    items.push({
+      type: 'folder',
+      key: 'mismatchDc',
+      ref: { kind: 'mismatchDc', name: MISMATCH_DC_NAME },
+      colors: [CrownColors.DONDAFUL_COMBO, CrownColors.FULL_COMBO],
+    });
+  }
   items.push({
     type: 'header',
     key: 'genre',
@@ -226,7 +263,17 @@ export default function FoldersScreen() {
             return (
               <Pressable onPress={() => setOpenFolder(item.ref)} onLongPress={item.onLong}>
                 <View style={styles.folderRow}>
-                  <View style={[StyleSheet.absoluteFill, { backgroundColor: item.color }]} />
+                  {item.colors ? (
+                    <LinearGradient
+                      colors={[item.colors[0], item.colors[0], item.colors[1], item.colors[1]]}
+                      locations={[0, 0.499, 0.501, 1]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={StyleSheet.absoluteFill}
+                    />
+                  ) : (
+                    <View style={[StyleSheet.absoluteFill, { backgroundColor: item.color }]} />
+                  )}
                   <ThemedText type="smallBold" numberOfLines={1} style={styles.folderName}>
                     {item.ref.name}
                   </ThemedText>
@@ -294,11 +341,38 @@ export default function FoldersScreen() {
 function FolderDetailModal({ folder, onClose }: { folder: FolderRef; onClose: () => void }) {
   const db = useSQLiteContext();
   const theme = useTheme();
-  // スマートフォルダ（もうすぐFC/DC・最近更新）は記録タブと同じ Row で譜面単位に表示する。
+  // スマートフォルダ（もうすぐFC/DC・最近更新・王冠とスコア不一致FC/DC）は記録タブと同じ Row で表示する。
   const isSmart =
-    folder.kind === 'almostFc' || folder.kind === 'almostDc' || folder.kind === 'recent';
-  // almost は完成に近い順を主表示（score）、recent は更新日時を主表示にする。
+    folder.kind === 'almostFc' ||
+    folder.kind === 'almostDc' ||
+    folder.kind === 'recent' ||
+    folder.kind === 'mismatchFc' ||
+    folder.kind === 'mismatchDc';
+  // recent は更新日時を主表示、その他は right で上書きするため任意（score）。
   const smartSortKey: RecordSortKey = folder.kind === 'recent' ? 'updatedAt' : 'score';
+  // 「王冠とスコアが異なる曲」はクラウン色の対角分割を背景にする。
+  const smartBackground =
+    folder.kind === 'mismatchFc'
+      ? { color1: CrownColors.CLEAR, color2: CrownColors.FULL_COMBO }
+      : folder.kind === 'mismatchDc'
+        ? { color1: CrownColors.DONDAFUL_COMBO, color2: CrownColors.FULL_COMBO }
+        : undefined;
+  // フォルダ種別ごとの右側表示（top=太字／bottom=グレー）。recent は sortKey に委ねる。
+  const smartRight = (item: RecordListRow): { top: string; bottom?: string } | undefined => {
+    const score = item.score_total != null ? item.score_total.toLocaleString() : '—';
+    switch (folder.kind) {
+      case 'almostFc':
+        return { top: `残り不可 ${item.ng ?? '—'}`, bottom: score };
+      case 'almostDc':
+        return { top: `残り可 ${item.ok ?? '—'}`, bottom: score };
+      case 'mismatchFc':
+        return { top: `不可 ${item.ng ?? '—'}`, bottom: score };
+      case 'mismatchDc':
+        return { top: `可 ${item.ok ?? '—'}`, bottom: `不可 ${item.ng ?? '—'}` };
+      default:
+        return undefined;
+    }
+  };
 
   // smart: 記録一覧行（RecordListRow）／genre・manual・star: 難易度別（FolderSongDetail）
   const [smartRows, setSmartRows] = useState<RecordListRow[]>([]);
@@ -435,20 +509,17 @@ function FolderDetailModal({ folder, onClose }: { folder: FolderRef; onClose: ()
                   ? '読み込み中…'
                   : folder.kind === 'recent'
                     ? '最近スコアを更新した曲がありません。'
-                    : '条件に合う曲がありません。設定の閾値・対象難易度を確認してください。'}
+                    : folder.kind === 'mismatchFc' || folder.kind === 'mismatchDc'
+                      ? '条件に合う曲がありません。'
+                      : '条件に合う曲がありません。設定の閾値・対象難易度を確認してください。'}
               </ThemedText>
             }
             renderItem={({ item }) => (
               <RecordRow
                 row={item}
                 sortKey={smartSortKey}
-                remaining={
-                  folder.kind === 'almostFc'
-                    ? { label: '不可', count: item.ng }
-                    : folder.kind === 'almostDc'
-                      ? { label: '可', count: item.ok }
-                      : undefined
-                }
+                right={smartRight(item)}
+                background={smartBackground}
                 onPress={() => setSelected({ song_number: item.song_number, level: item.level })}
               />
             )}

@@ -2,7 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { SELF_TAIKO_NO, type Class, type Crown, type Level } from '@/types';
 import { getAlmostConfig, getMainLevels } from './meta';
-import { buildRecordQuery, getScoreUpdateDays, type RecordListRow } from './records';
+import { buildRecordQuery, COMPUTED_COLS, getScoreUpdateDays, type RecordListRow } from './records';
 
 /** 「最近スコアを更新した曲」フォルダで遡る、スコア更新日の日数。 */
 const RECENT_UPDATE_DAYS = 3;
@@ -28,6 +28,8 @@ export type FolderRef =
   | { kind: 'almostFc'; name: string }
   | { kind: 'almostDc'; name: string }
   | { kind: 'recent', name: string }
+  | { kind: 'mismatchFc'; name: string }
+  | { kind: 'mismatchDc'; name: string }
   | { kind: 'manual'; id: number; name: string }
   | { kind: 'star'; star: number; name: string };
 
@@ -215,6 +217,17 @@ export async function getFolderSongs(
     case 'almostFc':
     case 'almostDc':
       return getAlmostSongs(db, ref.kind);
+    case 'mismatchFc':
+    case 'mismatchDc': {
+      // 「王冠とスコアが異なる曲」。お気に入り反映用に song_number/level/crown を返す。
+      const rows = await queryMismatchRows(db, ref.kind);
+      return rows.map((r) => ({
+        song_number: r.song_number,
+        title: r.song_title,
+        level: r.level,
+        crown: r.crown,
+      }));
+    }
     case 'recent': {
       // 直近 RECENT_UPDATE_DAYS 日分のスコア更新日に更新があった曲を新しい順で集める。
       const days = await getScoreUpdateDays(db, SELF_TAIKO_NO, RECENT_UPDATE_DAYS);
@@ -266,14 +279,84 @@ export async function getFolderSongs(
 }
 
 /**
- * スマートフォルダ（もうすぐFC / もうすぐDC / 最近スコアを更新した曲）の中身を、
- * 記録一覧と同じ RecordListRow（譜面=song×level 単位）で返す。記録タブと同じ Row で表示する用途。
+ * 「王冠とスコアが異なる曲」フォルダの中身を RecordListRow で返す。
+ * mismatchFc: 王冠＝FC だが最高スコアのリザルトに不可(ng)が残る譜面。
+ * mismatchDc: 王冠＝DC だが最高スコアのリザルトに可(ok)/不可(ng)が残る譜面。
+ * 「最高スコアのリザルト」は譜面ごとの MAX(score_total) 行（同点は最新優先で1行に確定）から取り、
+ * 表示用の王冠/極/更新日時は記録タブと同様に最新行から取る。対象難易度はメインの難易度に従う。
+ */
+async function queryMismatchRows(
+  db: SQLiteDatabase,
+  kind: 'mismatchFc' | 'mismatchDc',
+): Promise<RecordListRow[]> {
+  const mainLevels = await getMainLevels(db);
+  const crown: Crown = kind === 'mismatchFc' ? 'FULL_COMBO' : 'DONDAFUL_COMBO';
+  // FC: 不可が残る／DC: 可または不可が残る。
+  const mismatch =
+    kind === 'mismatchFc'
+      ? 'IFNULL(r.ng, 0) >= 1'
+      : '(IFNULL(r.ng, 0) >= 1 OR IFNULL(r.ok, 0) >= 1)';
+  // 不一致の度合いが大きい順（残ノーツが多い順）に並べる。
+  const severity = kind === 'mismatchFc' ? 'r.ng DESC' : '(r.ng + r.ok) DESC';
+  const levelPlaceholders = mainLevels.map(() => '?').join(', ');
+
+  return db.getAllAsync<RecordListRow>(
+    /* sql */ `
+      WITH best AS (
+        SELECT * FROM (
+          SELECT r.*, ROW_NUMBER() OVER (
+            PARTITION BY r.song_number, r.level
+            ORDER BY r.score_total DESC, r.updated_at DESC, r.id DESC
+          ) AS rn
+          FROM records r
+          WHERE r.taiko_no = ? AND r.score_total IS NOT NULL
+        ) WHERE rn = 1
+      ),
+      latest AS (
+        SELECT r.* FROM records r
+        JOIN (
+          SELECT song_number, level, MAX(updated_at) AS mx
+          FROM records WHERE taiko_no = ? GROUP BY song_number, level
+        ) m ON m.song_number = r.song_number AND m.level = r.level AND m.mx = r.updated_at
+        WHERE r.taiko_no = ?
+      )
+      SELECT
+        r.song_number, s.title AS song_title, r.level,
+        l.crown, l.class, r.score_total, r.good, r.ok, r.ng, r.pound,
+        lv.star AS star, lv.tier AS tier, l.updated_at,
+        ${COMPUTED_COLS},
+        (SELECT GROUP_CONCAT(gs.genre_id) FROM genre_songs gs
+         WHERE gs.song_number = r.song_number) AS genre_ids
+      FROM best r
+      JOIN latest l ON l.song_number = r.song_number AND l.level = r.level
+      JOIN songs s ON s.number = r.song_number
+      LEFT JOIN charts lv ON lv.song_number = r.song_number AND lv.level = r.level
+      WHERE l.crown = ?
+        AND r.level IN (${levelPlaceholders})
+        AND ${mismatch}
+      ORDER BY ${severity}, s.title ASC
+    `,
+    SELF_TAIKO_NO,
+    SELF_TAIKO_NO,
+    SELF_TAIKO_NO,
+    crown,
+    ...mainLevels,
+  );
+}
+
+/**
+ * スマートフォルダ（もうすぐFC / もうすぐDC / 最近スコアを更新した曲 / 王冠とスコアが異なる曲FC・DC）の
+ * 中身を、記録一覧と同じ RecordListRow（譜面=song×level 単位）で返す。記録タブと同じ Row で表示する用途。
  * almost は完成に近い順（残数 col 昇順）、recent は更新日時の新しい順で並べる。
  */
 export async function getSmartFolderRecords(
   db: SQLiteDatabase,
   ref: FolderRef,
 ): Promise<RecordListRow[]> {
+  if (ref.kind === 'mismatchFc' || ref.kind === 'mismatchDc') {
+    return queryMismatchRows(db, ref.kind);
+  }
+
   if (ref.kind === 'recent') {
     const days = await getScoreUpdateDays(db, SELF_TAIKO_NO, RECENT_UPDATE_DAYS);
     if (days.length === 0) return [];

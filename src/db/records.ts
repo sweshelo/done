@@ -491,7 +491,7 @@ const LATEST_MERGED = /* sql */ `
  * total_notes = good + ok + ng（サブソートにも使う）
  * base_score = score_total - pound * 100（素点）
  */
-const COMPUTED_COLS = /* sql */ `
+export const COMPUTED_COLS = /* sql */ `
   (r.good + r.ok + r.ng) AS total_notes,
   CASE WHEN (r.good + r.ok + r.ng) > 0
     THEN CAST(r.good AS REAL) / (r.good + r.ok + r.ng)
